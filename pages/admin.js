@@ -1,104 +1,140 @@
-import { useState } from 'react';
-import Shell from '../components/Shell';
+// pages/admin.tsx (or .jsx)
+import { useEffect, useState } from 'react';
 
 export default function Admin() {
+  const [stage, setStage] = useState<'pin'|'list'>('pin');
   const [pin, setPin] = useState('');
-  const [authed, setAuthed] = useState(false);
-  const [members, setMembers] = useState([]);
-  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [members, setMembers] = useState<any[]>([]);
   const [name, setName] = useState('');
-  const [msg, setMsg] = useState('');
+  const [email, setEmail] = useState('');
 
-  async function load() {
-    setMsg('Loading…');
-    const res = await fetch('/api/members', { headers: { 'x-admin-pin': pin } });
-    const j = await res.json();
-    if (j.ok) { setMembers(j.data); setAuthed(true); setMsg(''); }
-    else setMsg(j.error || 'Wrong PIN');
+  const headerPin = () => localStorage.getItem('adminPin') || pin;
+
+  async function loadMembers() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/members', {
+        headers: { 'x-admin-pin': headerPin()! }
+      });
+      const data = await res.json().catch(() => ({} as any));
+      const list = Array.isArray(data?.members) ? data.members
+                : (Array.isArray(data) ? data : []);
+      setMembers(list);
+      setStage('list');
+    } catch (err) {
+      console.error('load members failed', err);
+      alert('Failed to load members (see console for details).');
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function addMember(e) {
-    e.preventDefault();
-    if (!email) return;
-    setMsg('Saving…');
-    const res = await fetch('/api/members', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-pin': pin },
-      body: JSON.stringify({ email, name })
-    });
-    const j = await res.json();
-    if (j.ok) { setEmail(''); setName(''); setMsg('Added!'); load(); }
-    else setMsg(j.error || 'Failed');
+  async function enter() {
+    localStorage.setItem('adminPin', pin.trim());
+    await loadMembers();
   }
 
-  async function sendTest() {
-    setMsg('Sending…');
-    const res = await fetch('/api/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-pin': pin },
-      body: JSON.stringify({
-        subject: 'Pickle Pal test',
-        text: 'This is a test from Pickle Pal.'
-      })
-    });
-    const j = await res.json();
-    setMsg(j.ok ? `Sent to ${j.count ?? 0} member(s)` : (j.error || 'Failed'));
+  async function addMember() {
+    try {
+      const res = await fetch('/api/members', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-pin': headerPin()!
+        },
+        body: JSON.stringify({ email, name })
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.error || 'Failed to add member');
+        return;
+      }
+      setEmail('');
+      setName('');
+      await loadMembers();
+    } catch (e) {
+      console.error(e);
+      alert('Add member failed');
+    }
+  }
+
+  async function sendTestEmail() {
+    try {
+      const emails = (members || []).map((m: any) => m.email);
+      const res = await fetch('/api/notify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-pin': headerPin()!
+        },
+        body: JSON.stringify({
+          subject: 'PicklePal: Test Email',
+          html: '<p>This is a test email from PicklePal.</p>',
+          memberEmails: emails
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.error || 'Failed to send email');
+        return;
+      }
+      alert(`Test email sent to ${emails.length} member(s).`);
+    } catch (e) {
+      console.error(e);
+      alert('Send test email failed');
+    }
+  }
+
+  if (stage === 'pin') {
+    return (
+      <div style={{ padding: 24 }}>
+        <h2>Admin</h2>
+        <input
+          value={pin}
+          onChange={e => setPin(e.target.value)}
+          placeholder="Enter admin PIN"
+          style={{ padding: 8, width: 240, marginRight: 8 }}
+        />
+        <button onClick={enter} disabled={loading}>
+          {loading ? 'Loading…' : 'Enter'}
+        </button>
+      </div>
+    );
   }
 
   return (
-    <Shell>
-      <h1 className="text-2xl font-bold mb-4">Admin</h1>
+    <div style={{ padding: 24 }}>
+      <h2>Admin</h2>
 
-      {!authed ? (
-        <div className="bg-white rounded-xl shadow p-4 space-y-3">
-          <input
-            className="border rounded p-2 w-full"
-            placeholder="Enter admin PIN"
-            value={pin}
-            onChange={e => setPin(e.target.value)}
-          />
-          <button onClick={load} className="bg-blue-600 text-white rounded p-2">
-            Enter
-          </button>
-          <div className="text-sm text-rose-600">{msg}</div>
-        </div>
-      ) : (
-        <>
-          <form onSubmit={addMember} className="bg-white rounded-xl shadow p-4 space-y-3 mb-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input
-                className="border rounded p-2"
-                placeholder="Name (optional)"
-                value={name}
-                onChange={e => setName(e.target.value)}
-              />
-              <input
-                className="border rounded p-2"
-                placeholder="Email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <button className="bg-blue-600 text-white rounded p-2">Add member</button>
-            <button type="button" onClick={sendTest}
-                    className="ml-3 bg-slate-600 text-white rounded p-2">
-              Send test email
-            </button>
-            <div className="text-sm text-emerald-700">{msg}</div>
-          </form>
+      <div style={{ marginBottom: 12 }}>
+        <input
+          placeholder="Name (optional)"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          style={{ padding: 8, width: 260, marginRight: 8 }}
+        />
+        <input
+          placeholder="Email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          style={{ padding: 8, width: 320, marginRight: 8 }}
+        />
+        <button onClick={addMember} style={{ marginRight: 8 }}>
+          Add member
+        </button>
+        <button onClick={sendTestEmail}>
+          Send test email
+        </button>
+      </div>
 
-          <div className="bg-white rounded-xl shadow">
-            {members.length === 0 ? (
-              <div className="p-4 text-sm text-slate-500">No members yet.</div>
-            ) : members.map(m => (
-              <div key={m.id} className="p-3 border-b text-sm">
-                {m.email}{m.name ? ` — ${m.name}` : ''}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </Shell>
+      <ul style={{ lineHeight: 1.8 }}>
+        {(members || []).map((m: any) => (
+          <li key={m.id || m.email}>
+            {m.email} {m.name ? `— ${m.name}` : ''}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
