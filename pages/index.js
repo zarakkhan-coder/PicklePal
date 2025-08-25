@@ -1,135 +1,171 @@
 import { useEffect, useState } from 'react';
-import Shell from '../components/Shell';
 import { supabase } from '../lib/supabaseClient';
 
+const DAYS = ['Saturday', 'Sunday'];
+const STARTS = ['7:00 AM', '8:00 AM', '9:00 AM'];
+const ENDS = ['8:00 AM', '9:00 AM', '10:00 AM'];
+
 export default function Home() {
-  const [form, setForm] = useState({
-    name: '',
-    day: 'Saturday',
-    start: '7:00 AM',
-    end: '8:00 AM'
-  });
-  const [status, setStatus] = useState('');
+  const [name, setName] = useState('');
+  const [day, setDay] = useState('Saturday');
+  const [startTime, setStartTime] = useState('7:00 AM');
+  const [endTime, setEndTime] = useState('8:00 AM');
+  const [message, setMessage] = useState('');
   const [votes, setVotes] = useState([]);
 
-  const times = [
-    '7:00 AM','8:00 AM','9:00 AM','10:00 AM','11:00 AM',
-    '12:00 PM','1:00 PM','2:00 PM','3:00 PM','4:00 PM','5:00 PM'
-  ];
-
-  // Load existing votes + subscribe to realtime
+  // Load last 20 votes at first
   useEffect(() => {
-    if (!supabase) return;
-
     const load = async () => {
       const { data, error } = await supabase
         .from('votes')
         .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && Array.isArray(data)) setVotes(data);
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (!error) setVotes(data || []);
     };
     load();
 
-    const channel = supabase
-      .channel('votes-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setVotes(v => [payload.new, ...v]);
+    // Realtime subscription
+    const sub = supabase
+      .channel('public:votes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'votes' },
+        (payload) => {
+          // prepend new record for live updates
+          if (payload.eventType === 'INSERT') {
+            setVotes((prev) => [payload.new, ...prev].slice(0, 20));
+          }
         }
-      })
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(sub);
+    };
   }, []);
 
-  async function submit(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setStatus('Submitting vote…');
+    setMessage('Submitting…');
+
+    if (!name.trim()) {
+      setMessage('Please enter your name.');
+      return;
+    }
 
     try {
-      // 1) Save in Supabase
-      if (supabase) {
-        const { error } = await supabase.from('votes').insert([{
-          name: form.name,
-          day: form.day,
-          start_time: form.start,
-          end_time: form.end
-        }]);
-        if (error) throw error;
-      }
+      const { error } = await supabase.from('votes').insert([
+        {
+          name: name.trim(),
+          day,
+          start_time: startTime,
+          end_time: endTime,
+        },
+      ]);
 
-      // 2) Optional notify (works once SendGrid/members added)
-      fetch('/api/notify', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({
-          subject: `Vote: ${form.day} ${form.start}–${form.end}`,
-          text: `${form.name} voted for ${form.day} ${form.start}–${form.end}`,
-          memberEmails: []
-        })
-      }).catch(() => {});
+      if (error) throw error;
 
-      setStatus('Vote submitted!');
+      setMessage('Vote submitted!');
+      // keep the form filled (or clear if you prefer)
+      // setName('');
     } catch (err) {
-      setStatus('Saved locally (DB not configured?)');
+      console.error(err);
+      setMessage('Something went wrong. Please try again.');
     }
-  }
+  };
 
   return (
-    <Shell>
-      <h1 className="text-3xl font-bold mb-4">Vote to Play</h1>
-      <p className="text-slate-600 mb-6">
-        Pick a day and time. <b>Results update live.</b>
-      </p>
-
-      <form onSubmit={submit} className="bg-white rounded-xl shadow p-4 space-y-4 mb-8">
-        <input
-          className="w-full border rounded p-2"
-          placeholder="Your name"
-          value={form.name}
-          onChange={e => setForm({ ...form, name: e.target.value })}
-          required
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <select className="border rounded p-2"
-            value={form.day}
-            onChange={e => setForm({ ...form, day: e.target.value })}
-          >
-            <option>Saturday</option>
-            <option>Sunday</option>
-          </select>
-
-          <select className="border rounded p-2"
-            value={form.start}
-            onChange={e => setForm({ ...form, start: e.target.value })}
-          >
-            {times.map(t => <option key={t}>{t}</option>)}
-          </select>
-
-          <select className="border rounded p-2"
-            value={form.end}
-            onChange={e => setForm({ ...form, end: e.target.value })}
-          >
-            {times.map(t => <option key={t}>{t}</option>)}
-          </select>
+    <div className="min-h-screen bg-gray-50">
+      <header className="border-b">
+        <div className="mx-auto max-w-5xl py-4 px-4 flex items-center justify-between">
+          <div className="text-lg font-bold">PicklePal</div>
+          <a className="text-sm underline" href="/admin">VoteAdmin</a>
         </div>
+      </header>
 
-        <button className="w-full bg-blue-600 text-white rounded p-2 font-semibold hover:bg-blue-700">
-          Submit Vote
-        </button>
-        <div className="text-sm text-emerald-700">{status}</div>
-      </form>
+      <main className="mx-auto max-w-5xl p-4">
+        <h1 className="text-3xl font-bold mt-6">Vote to Play</h1>
+        <p className="text-gray-600 mt-2">
+          Pick a day and time. <strong>Results update live.</strong>
+        </p>
 
-      <h2 className="text-xl font-semibold mb-2">Latest votes</h2>
-      <div className="bg-white rounded-xl shadow">
-        {votes.length === 0 ? (
-          <div className="p-4 text-sm text-slate-500">No votes yet.</div>
-        ) : votes.map(v => (
-          <div key={v.id} className="p-3 border-b text-sm">
-            <b>{v.name}</b> → {v.day} {v.start_time}–{v.end_time}
+        <form
+          onSubmit={handleSubmit}
+          className="mt-6 bg-white rounded-lg shadow p-4 border"
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              className="border rounded px-3 py-2"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+
+            <select
+              className="border rounded px-3 py-2"
+              value={day}
+              onChange={(e) => setDay(e.target.value)}
+            >
+              {DAYS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="border rounded px-3 py-2"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            >
+              {STARTS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="border rounded px-3 py-2"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+            >
+              {ENDS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
           </div>
-        ))}
-      </div>
-    </Shell>
+
+          <button
+            type="submit"
+            className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded px-4 py-2"
+          >
+            Submit Vote
+          </button>
+
+          {message && <p className="text-sm text-gray-700 mt-2">{message}</p>}
+        </form>
+
+        <section className="mt-8">
+          <h2 className="text-xl font-semibold">Latest votes</h2>
+          <div className="mt-3 space-y-2">
+            {votes.map((v) => (
+              <div
+                key={v.id}
+                className="bg-white border rounded px-4 py-2 text-sm"
+              >
+                <strong>{v.name}</strong> → {v.day} {v.start_time}–{v.end_time}
+              </div>
+            ))}
+            {!votes.length && (
+              <div className="text-gray-500 text-sm">No votes yet.</div>
+            )}
+          </div>
+        </section>
+      </main>
+    </div>
   );
 }
