@@ -12,21 +12,17 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 export default async function handler(req, res) {
   const adminPin = req.headers['x-admin-pin'];
 
-  // Require admin pin for all methods
   if (adminPin !== ADMIN_PIN) {
     return res.status(401).json({ ok: false, error: 'admin pin required' });
   }
 
   if (req.method === 'GET') {
-    // Return the members list
     const { data, error } = await supabase
       .from('members')
       .select('id, email, name, is_active, created_at')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      return res.status(500).json({ ok: false, error: error.message });
-    }
+    if (error) return res.status(500).json({ ok: false, error: error.message });
     return res.json({ ok: true, members: data || [] });
   }
 
@@ -37,7 +33,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: 'email required' });
     }
 
-    // Upsert so duplicates are ignored; avoids 500 on unique constraint
     const { data, error } = await supabase
       .from('members')
       .upsert(
@@ -46,9 +41,7 @@ export default async function handler(req, res) {
       )
       .select();
 
-    if (error) {
-      return res.status(500).json({ ok: false, error: error.message });
-    }
+    if (error) return res.status(500).json({ ok: false, error: error.message });
     return res.json({ ok: true, data: data || [] });
   }
 
