@@ -1,30 +1,36 @@
+// pages/api/members.js
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const {
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  ADMIN_PIN
+} = process.env;
 
 export default async function handler(req, res) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    // Let the app deploy even if DB not configured yet
-    return res.status(200).json({ ok: true, info: 'Supabase not configured yet' });
+  if (req.method !== 'POST') return res.status(405).end();
+
+  // Simple admin gate
+  if (req.headers['x-admin-pin'] !== ADMIN_PIN) {
+    return res.status(401).json({ ok: false, error: 'admin pin required' });
   }
 
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { email, name } = req.body || {};
+  const cleaned = (email || '').toLowerCase().trim();
+  if (!cleaned) return res.status(400).json({ ok: false, error: 'email required' });
 
-  try {
-    if (req.method === 'GET') {
-      const { data, error } = await admin.from('members').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      return res.status(200).json({ ok: true, data });
-    }
-    if (req.method === 'POST') {
-      const { email, name } = req.body || {};
-      const { data, error } = await admin.from('members').insert([{ email, name }]).select('*').single();
-      if (error) throw error;
-      return res.status(200).json({ ok: true, data });
-    }
-    return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  // Use UPSERT so duplicates don't crash
+  const { data, error } = await supabase
+    .from('members')
+    .upsert(
+      [{ email: cleaned, name: name || null, is_active: true }],
+      { onConflict: 'email', ignoreDuplicates: true }
+    )
+    .select();
+
+  if (error) return res.status(500).json({ ok: false, error: error.message });
+
+  return res.json({ ok: true, data });
 }
