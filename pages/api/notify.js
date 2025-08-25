@@ -1,32 +1,67 @@
+// pages/api/notify.js
 import sgMail from '@sendgrid/mail';
 import { createClient } from '@supabase/supabase-js';
 
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const FROM = process.env.NOTIFICATION_FROM_EMAIL || 'notify@example.com';
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (SENDGRID_API_KEY) sgMail.setApiKey(SENDGRID_API_KEY);
+const {
+  SENDGRID_API_KEY,
+  NOTIFICATION_FROM_EMAIL,
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  ADMIN_PIN
+} = process.env;
 
 export default async function handler(req, res) {
-  // Deploy-first: if not configured, just return ok
-  if (!SENDGRID_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return res.status(200).json({ ok: true, info: 'Email/Supabase not configured yet' });
+  if (req.method !== 'POST') return res.status(405).end();
+
+  // Admin gate
+  if (req.headers['x-admin-pin'] !== ADMIN_PIN) {
+    return res.status(401).json({ ok: false, error: 'admin pin required' });
   }
 
+  // Check required env vars
+  const missing = [];
+  if (!SENDGRID_API_KEY) missing.push('SENDGRID_API_KEY');
+  if (!NOTIFICATION_FROM_EMAIL) missing.push('NOTIFICATION_FROM_EMAIL');
+  if (!SUPABASE_URL) missing.push('SUPABASE_URL');
+  if (!SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (missing.length) {
+    return res.json({
+      ok: true,
+      skipped: true,
+      reason: `Missing env: ${missing.join(', ')}`
+    });
+  }
+
+  // Pull active members from Supabase
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data, error } = await supabase
+    .from('members')
+    .select('email')
+    .eq('is_active', true);
+
+  if (error) return res.status(500).json({ ok: false, error: error.message });
+
+  const recipients = (data || []).map(r => r.email).filter(Boolean);
+  if (!recipients.length) {
+    return res.status(400).json({ ok: false, error: 'no active members' });
+  }
+
+  // Send through SendGrid
   try {
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { memberEmails = [], subject = 'Pickle Pal Update', text = '' } = req.body || {};
+    sgMail.setApiKey(SENDGRID_API_KEY);
+    await sgMail.sendMultiple({
+      to: recipients,
+      from: NOTIFICATION_FROM_EMAIL,
+      subject: 'Pickle Pal test',
+      text: 'Hello from Pickle Pal!'
+    });
 
-    if (!Array.isArray(memberEmails) || memberEmails.length === 0) {
-      return res.status(400).json({ ok: false, error: 'memberEmails required' });
-    }
-
-    await sgMail.sendMultiple({ to: memberEmails, from: FROM, subject, text });
-    await admin.from('notifications').insert([{ subject, text }]);
-
-    return res.status(200).json({ ok: true });
+    return res.json({ ok: true, count: recipients.length, to: recipients });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+    console.error('SendGrid error', e?.response?.body || e);
+    return res
+      .status(500)
+      .json({ ok: false, error: e?.response?.body || e.message || String(e) });
   }
 }
