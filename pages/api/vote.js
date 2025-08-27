@@ -2,37 +2,54 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
-  process.env.SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-const VALID_DAYS = ['Saturday', 'Sunday']; // add more if you want
-const VALID_TIMES = [
-  '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
-  '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM'
-];
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  const { name = '', email = '', day = '', start_time = '', end_time = '' } = req.body || {};
+  const { name, email, day, start_time, end_time } = req.body || {};
 
-  if (!email || !day || !start_time || !end_time) {
-    return res.status(400).json({ ok: false, error: 'Missing fields' });
-  }
-  if (!VALID_DAYS.includes(day)) {
-    return res.status(400).json({ ok: false, error: 'Invalid day' });
-  }
-  if (!VALID_TIMES.includes(start_time) || !VALID_TIMES.includes(end_time)) {
-    return res.status(400).json({ ok: false, error: 'Invalid time' });
+  // 1) Name required
+  if (!name || !name.trim()) {
+    return res.status(400).json({ ok: false, error: 'Name is required.' });
   }
 
-  const { error } = await supabase
-    .from('votes')
-    .insert([{ name, email, day, start_time, end_time }]);
+  // 2) Day required
+  if (!day) {
+    return res.status(400).json({ ok: false, error: 'Day is required.' });
+  }
 
-  if (error) return res.status(500).json({ ok: false, error: error.message });
-  return res.json({ ok: true, message: 'Vote recorded' });
+  // 3) Validate times: 24-hour strings like '07:00', '18:00', '24:00'
+  const is24h = (t) => /^([01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(t);
+  if (!is24h(start_time) || !is24h(end_time)) {
+    return res.status(400).json({ ok: false, error: 'Times must be HH:MM 24h format.' });
+  }
+
+  // Disallow start >= end (except 24:00 is only sensible for end)
+  const toMinutes = (t) => {
+    if (t === '24:00') return 24 * 60;
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  if (toMinutes(start_time) >= toMinutes(end_time)) {
+    return res.status(400).json({ ok: false, error: 'End time must be after start time.' });
+  }
+
+  const { error } = await supabase.from('votes').insert({
+    name: name.trim(),
+    email: email?.trim() || null,
+    day,
+    start_time,
+    end_time
+  });
+
+  if (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+
+  return res.status(200).json({ ok: true });
 }
