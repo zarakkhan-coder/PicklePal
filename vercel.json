@@ -1,9 +1,12 @@
 {
   "crons": [
     {
-      "path": "/api/cron/weekly?secret=IKNOWTHESECRET",
-      "schedule": "0 9 * * 1",
-      "timezone": "America/Chicago"
+      "path": "/api/cron/weekly?secret=IKNOWTHESECRET&variant=mon",
+      "schedule": "0 14 * * 1"
+    },
+    {
+      "path": "/api/cron/weekly?secret=IKNOWTHESECRET&variant=thu",
+      "schedule": "0 14 * * 4"
     }
   ]
 }
