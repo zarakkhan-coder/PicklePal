@@ -1,8 +1,9 @@
 {
   "crons": [
     {
-      "path": "/api/reminder?token=@cron_token",
-      "schedule": "0 9 * * 1"
+      "path": "/api/cron/weekly?secret=IKNOWTHESECRET",
+      "schedule": "0 9 * * 1",
+      "timezone": "America/Chicago"
     }
   ]
 }
