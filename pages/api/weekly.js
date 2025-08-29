@@ -3,14 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY // service role for reading the view safely
 );
 
 export default async function handler(_req, res) {
-  // Read the weekly_tally view (we’ll include names in Step 3 below)
   const { data, error } = await supabase
     .from('weekly_tally')
-    .select('*');
+    .select('*')
+    .order('votes', { ascending: false });
 
   if (error) {
     return res.status(500).json({ ok: false, error: error.message });
