@@ -21,19 +21,19 @@ export default function Weekly() {
         <title>PicklePal — Weekly Results</title>
       </Head>
 
-      {/* side fills */}
+      {/* side fills behind */}
       <div className="edge edge-left" aria-hidden />
       <div className="edge edge-right" aria-hidden />
 
-      {/* court & art */}
-      <div className="court" aria-hidden />
-      <div className="pp-art" aria-hidden>
-        <span className="ball b1">🟡</span>
-        <span className="ball b2">🟡</span>
-        <span className="paddle pd1">🏓</span>
-      </div>
-
       <div className="pp-wrap">
+        {/* court + art inside wrapper so they’re visible */}
+        <div className="court" aria-hidden />
+        <div className="pp-art" aria-hidden>
+          <span className="ball b1">🟡</span>
+          <span className="ball b2">🟡</span>
+          <span className="paddle pd1">🏓</span>
+        </div>
+
         <div className="pp-card">
           <div className="pp-header">
             <div className="logo">
@@ -101,7 +101,7 @@ export default function Weekly() {
           place-items: center;
           background: linear-gradient(180deg, #0b1b2a, #0b1b2a);
           padding: 32px 16px;
-          position: relative;
+          position: relative; /* important */
           overflow: hidden;
         }
 
@@ -112,7 +112,7 @@ export default function Weekly() {
           width: 40vw;
           filter: blur(40px);
           opacity: 0.25;
-          z-index: 0;
+          z-index: 0;    /* behind */
           pointer-events: none;
         }
         .edge-left {
@@ -125,29 +125,21 @@ export default function Weekly() {
         }
 
         .court {
-          position: fixed;
+          position: absolute;
           inset: 0;
           pointer-events: none;
           opacity: 0.22;
           background:
-            repeating-linear-gradient(
-              to right,
-              #224861 0 2px,
-              transparent 2px 90px
-            ),
-            repeating-linear-gradient(
-              to bottom,
-              #224861 0 2px,
-              transparent 2px 90px
-            );
-          z-index: 0;
+            repeating-linear-gradient(to right, #224861 0 2px, transparent 2px 90px),
+            repeating-linear-gradient(to bottom, #224861 0 2px, transparent 2px 90px);
+          z-index: 1;    /* below card */
         }
 
         .pp-art {
-          position: fixed;
+          position: absolute;
           inset: 0;
           pointer-events: none;
-          z-index: 0;
+          z-index: 1;    /* below card */
         }
         .ball, .paddle {
           position: absolute;
@@ -176,10 +168,10 @@ export default function Weekly() {
           color: #eaf6ff;
           border: 1px solid #14314a;
           border-radius: 16px;
-          box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4);
+          box-shadow: 0 10px 50px rgba(0,0,0,0.4);
           padding: 28px;
           position: relative;
-          z-index: 2;
+          z-index: 3;   /* above court/art */
         }
 
         .pp-header {
@@ -216,11 +208,7 @@ export default function Weekly() {
         }
         .book { color: #7fd6ff; text-decoration: none; }
 
-        .tbl {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 10px;
-        }
+        .tbl { width: 100%; border-collapse: collapse; margin-top: 10px; }
         .tbl th, .tbl td {
           border-bottom: 1px solid #1e3f5a;
           padding: 10px 8px;
