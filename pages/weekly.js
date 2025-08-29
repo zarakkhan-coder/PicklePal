@@ -1,109 +1,181 @@
 // pages/weekly.js
-import { useEffect, useState } from 'react';
-
-const card = {
-  maxWidth: 920,
-  margin: '32px auto',
-  padding: '24px',
-  borderRadius: 16,
-  background: '#0b1220',
-  color: 'white',
-  boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
-  border: '1px solid rgba(255,255,255,0.08)',
-};
-
-const h1 = { fontSize: 34, margin: '24px 0' };
-const small = { color: '#9bb0d3' };
-const table = { width: '100%', borderCollapse: 'collapse' };
-const thtd = { padding: '12px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' };
+import { useEffect, useState } from "react";
+import Head from "next/head";
 
 export default function Weekly() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch('/api/weekly')
-      .then(r => r.json())
-      .then(d => { setRows(d.rows || []); setLoading(false); })
-      .catch(() => setLoading(false));
+    (async () => {
+      try {
+        const res = await fetch("/api/weekly");
+        const json = await res.json();
+        if (!res.ok || !json.ok) throw new Error(json.error || "Failed to load results.");
+        setRows(json.rows || []);
+      } catch (e) {
+        setError(e.message || "Something went wrong.");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  if (loading) {
-    return (
-      <div style={card}>
-        <h1 style={h1}>Weekly Results</h1>
-        <p style={small}>Loading…</p>
-      </div>
-    );
-  }
-
-  const top = rows[0];
+  const best = rows.reduce((a, b) => (b.votes > (a?.votes || 0) ? b : a), null);
 
   return (
-    <div style={{ padding: '20px' }}>
-      <div style={card}>
-        <h1 style={h1}>Weekly Results</h1>
-        <p style={small}>We suggest the slot with the most votes.</p>
+    <>
+      <Head>
+        <title>Weekly Results — PicklePal</title>
+      </Head>
 
-        {top ? (
-          <div
-            style={{
-              background: '#16223a',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 12,
-              padding: '16px',
-              margin: '12px 0 20px',
-            }}
-          >
-            <strong>Suggested slot (majority):</strong>{' '}
-            {top.day} {top.start_time}–{top.end_time} ({top.votes} vote{top.votes === 1 ? '' : 's'})
-            <div style={{ marginTop: 10 }}>
-              <a
-                href="https://walmart.clubautomation.com/event/reserve-court-new"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: '#6ecbff' }}
-              >
-                Book court at Walmart&nbsp;ClubAutomation →
-              </a>
-            </div>
-          </div>
-        ) : (
-          <p style={small}>No votes yet this week.</p>
-        )}
+      <div className="wrap">
+        <div className="card">
+          <h1>Weekly Results</h1>
+          <p className="sub">We suggest the slot with the most votes.</p>
 
-        <h3 style={{ margin: '20px 0 12px' }}>Full tally</h3>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={table}>
-            <thead>
-              <tr>
-                <th style={thtd}>Day</th>
-                <th style={thtd}>From</th>
-                <th style={thtd}>To</th>
-                <th style={thtd}>Votes</th>
-                <th style={thtd}>Players</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  <td style={thtd}>{r.day}</td>
-                  <td style={thtd}>{r.start_time}</td>
-                  <td style={thtd}>{r.end_time}</td>
-                  <td style={thtd}>{r.votes}</td>
-                  <td style={thtd}>
-                    {(r.player_names || []).join(', ') || <span style={small}>—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          {loading && <div className="muted">Loading…</div>}
+          {error && <div className="err">{error}</div>}
 
-        <div style={{ marginTop: 18 }}>
-          <a href="/" style={{ color: '#9bb0d3' }}>← Back to vote</a>
+          {!loading && !error && (
+            <>
+              {best ? (
+                <div className="suggestion">
+                  <strong>Suggested slot (majority):</strong>{" "}
+                  {best.day} {best.start_time}–{best.end_time} ({best.votes} {best.votes === 1 ? "vote" : "votes"})
+                  <div>
+                    <a
+                      className="book"
+                      href="https://walmart.clubautomation.com/event/reserve-court-new"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Book court at Walmart ClubAutomation →
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="muted">No votes yet this week.</div>
+              )}
+
+              {!!rows.length && (
+                <>
+                  <h2>Full tally</h2>
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Day</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Votes</th>
+                        <th>Players</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={i}>
+                          <td>{r.day}</td>
+                          <td>{r.start_time}</td>
+                          <td>{r.end_time}</td>
+                          <td>{r.votes}</td>
+                          <td>{(r.player_names || []).join(", ") || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+
+              <div className="back">
+                <a href="/">← Back to vote</a>
+              </div>
+            </>
+          )}
         </div>
       </div>
-    </div>
+
+      <style jsx>{`
+        .wrap {
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          padding: 32px 16px;
+          background: radial-gradient(1200px 600px at 20% -20%, #aefb6f33 30%, transparent 60%),
+            radial-gradient(1200px 800px at 110% 0%, #6de3ff33 30%, transparent 60%),
+            linear-gradient(180deg, #0b1b2a, #0b1b2a);
+          color: #eaf6ff;
+        }
+        .card {
+          width: 100%;
+          max-width: 900px;
+          background: #0f2236;
+          border: 1px solid #14314a;
+          border-radius: 16px;
+          box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4);
+          padding: 28px;
+        }
+        h1 {
+          margin: 0 0 8px;
+        }
+        .sub {
+          margin: 0 0 18px;
+          opacity: 0.85;
+        }
+        .err {
+          background: #441818;
+          border: 1px solid #8b2e2e;
+          color: #ffc1c1;
+          border-radius: 10px;
+          padding: 10px 12px;
+        }
+        .muted {
+          opacity: 0.85;
+        }
+        .suggestion {
+          background: #0b1b2a;
+          border: 1px solid #1b3852;
+          border-radius: 12px;
+          padding: 12px 14px;
+          margin-bottom: 16px;
+        }
+        .book {
+          display: inline-block;
+          margin-top: 6px;
+          color: #7fd6ff;
+          text-decoration: none;
+        }
+        h2 {
+          margin: 18px 0 8px;
+        }
+        .tbl {
+          width: 100%;
+          border-collapse: collapse;
+          background: #0b1b2a;
+          border: 1px solid #1b3852;
+          border-radius: 10px;
+          overflow: hidden;
+        }
+        .tbl th,
+        .tbl td {
+          padding: 10px 12px;
+          border-bottom: 1px solid #1b3852;
+          text-align: left;
+        }
+        .tbl thead th {
+          background: #0f2740;
+        }
+        .tbl tbody tr:last-child td {
+          border-bottom: none;
+        }
+        .back {
+          margin-top: 12px;
+        }
+        .back a {
+          color: #7fd6ff;
+          text-decoration: none;
+        }
+      `}</style>
+    </>
   );
 }
