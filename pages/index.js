@@ -8,29 +8,30 @@ const DAYS = ["Saturday", "Sunday"];
 // 24h times every 1 hour (00:00 ... 24:00)
 const HOURS = Array.from({ length: 25 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
 
-// a tiny synthesized “pock” paddle-hit sound (no audio file needed)
-function playPaddleSound() {
+// crisp, satisfying “click”
+function playClickSound() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     const ctx = new Ctx();
+    const t = ctx.currentTime;
 
-    // Oscillator burst for a percussive "pock"
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
+    // a short square blip with a tiny envelope
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
-    o.type = "triangle";
-    o.frequency.setValueAtTime(650, ctx.currentTime);
-    o.frequency.exponentialRampToValueAtTime(140, ctx.currentTime + 0.08);
+    osc.type = "square";
+    osc.frequency.setValueAtTime(2000, t);                     // initial freq
+    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.02); // little drop = nicer click
 
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.5, ctx.currentTime + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.4, t + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
 
-    o.connect(g).connect(ctx.destination);
-    o.start();
-    o.stop(ctx.currentTime + 0.13);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.08);
   } catch {
-    // ignore if AudioContext not available
+    // ignore if AudioContext not available / blocked
   }
 }
 
@@ -63,8 +64,8 @@ export default function Home() {
     e.preventDefault();
     setError("");
 
-    // play sound immediately on click (user gesture-friendly)
-    playPaddleSound();
+    // play the click right away on user gesture
+    playClickSound();
 
     if (!name.trim()) {
       setError("Please enter your name.");
@@ -109,7 +110,8 @@ export default function Home() {
         <title>PicklePal — Vote to Play</title>
       </Head>
 
-      {/* floating pickleball/paddle decor */}
+      {/* Decorative court lines & floating pickleballs/paddles */}
+      <div className="court" aria-hidden />
       <div className="pp-art" aria-hidden>
         <span className="ball b1">🟡</span>
         <span className="ball b2">🟡</span>
@@ -121,9 +123,11 @@ export default function Home() {
       <div className="pp-wrap">
         <div className="pp-card">
           <div className="pp-header">
-            <span className="pp-ball">🏓</span>
-            <h1>PicklePal</h1>
-            <p>Vote to Play</p>
+            <div className="logo">
+              <span className="logo-ball" />
+              <strong>PicklePal</strong>
+            </div>
+            <span className="tag">Vote to Play</span>
           </div>
 
           <p className="pp-copy">
@@ -212,6 +216,27 @@ export default function Home() {
           overflow: hidden;
         }
 
+        /* translucent “court lines” overlay */
+        .court {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          opacity: 0.15;
+          background:
+            repeating-linear-gradient(
+              to right,
+              #224861 0 1px,
+              transparent 1px 80px
+            ),
+            repeating-linear-gradient(
+              to bottom,
+              #224861 0 1px,
+              transparent 1px 80px
+            );
+          mix-blend-mode: screen;
+          z-index: 0;
+        }
+
         .pp-card {
           width: 100%;
           max-width: 760px;
@@ -222,29 +247,45 @@ export default function Home() {
           box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4);
           padding: 28px;
           position: relative;
+          z-index: 1;
         }
 
         .pp-header {
           display: flex;
           align-items: center;
+          justify-content: space-between;
           gap: 12px;
           margin-bottom: 8px;
         }
-        .pp-header h1 {
-          font-size: 28px;
-          margin: 0;
+        .logo {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 24px;
         }
-        .pp-header p {
-          margin: 0;
+        .logo-ball {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: radial-gradient(circle at 30% 30%, #ffe45e, #ffd400 60%, #cc9c00);
+          box-shadow: 0 0 12px #ffd40088, 0 0 24px #ffd40044;
+          transform: translateZ(0);
+          animation: pulse 2.4s ease-in-out infinite;
+        }
+        .tag {
+          font-size: 14px;
           opacity: 0.8;
         }
-        .pp-ball {
-          font-size: 28px;
+        @keyframes pulse {
+          0%,100% { transform: scale(1); }
+          50%     { transform: scale(1.08); }
         }
+
         .pp-copy {
           margin: 10px 0 20px;
           opacity: 0.9;
         }
+
         .pp-form label {
           display: block;
           margin-bottom: 14px;
@@ -255,6 +296,7 @@ export default function Home() {
           gap: 12px;
           grid-template-columns: 2fr 1fr 1fr;
         }
+
         input,
         select {
           width: 100%;
@@ -309,11 +351,9 @@ export default function Home() {
           color: #7fd6ff;
           text-decoration: none;
         }
-        .req {
-          color: #ff8b8b;
-        }
+        .req { color: #ff8b8b; }
 
-        /* Decorative floating balls and paddles */
+        /* Floating pickleballs/paddles */
         .pp-art {
           position: fixed;
           inset: 0;
@@ -322,11 +362,12 @@ export default function Home() {
         }
         .ball, .paddle {
           position: absolute;
-          opacity: 0.25;
+          opacity: 0.28;
           filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
         }
         .ball {
-          font-size: 28px;
+          font-size: 30px;
+          text-shadow: 0 0 10px rgba(255,212,0,.2), 0 0 20px rgba(255,212,0,.12);
           animation: float 16s linear infinite;
         }
         .b1 { left: 6%;  bottom: -50px; animation-duration: 18s; }
