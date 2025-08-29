@@ -1,55 +1,64 @@
 // pages/api/vote.js
-import { createClient } from '@supabase/supabase-js';
+import { getServerSupabase } from '../../lib/supabaseClient';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+function isHHMM(s) {
+  return typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);
+}
+function toMinutes(s) {
+  const [h, m] = s.split(':').map(Number);
+  return h * 60 + m;
+}
+function thisWeekStartISO() {
+  const d = new Date();
+  // start of week (Monday 00:00) in local time
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diff = (day === 0 ? -6 : 1 - day); // move to Monday
+  const start = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate() + diff,
+    0, 0, 0, 0
+  );
+  return start.toISOString();
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  const { name, email, day, start_time, end_time } = req.body || {};
+  try {
+    const { name, email, day, start_time, end_time } = req.body || {};
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ ok: false, error: 'Name is required.' });
+    }
+    if (!(day === 'Saturday' || day === 'Sunday')) {
+      return res.status(400).json({ ok: false, error: 'Day must be Saturday or Sunday.' });
+    }
+    if (!isHHMM(start_time) || !isHHMM(end_time)) {
+      return res.status(400).json({ ok: false, error: 'Times must be HH:MM (24-hour).' });
+    }
+    if (toMinutes(end_time) <= toMinutes(start_time)) {
+      return res.status(400).json({ ok: false, error: 'End time must be after start time.' });
+    }
 
-  // 1) Name required
-  if (!name || !name.trim()) {
-    return res.status(400).json({ ok: false, error: 'Name is required.' });
+    const supabase = getServerSupabase();
+
+    const { error } = await supabase.from('votes').insert({
+      name: String(name).trim(),
+      email: email ? String(email).trim() : null,
+      day,
+      start_time,
+      end_time,
+      created_at: new Date().toISOString(),
+      // handy week tag to filter quickly without DB view
+      week_start: thisWeekStartISO(),
+    });
+
+    if (error) throw error;
+
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message || 'Server error' });
   }
-
-  // 2) Day required
-  if (!day) {
-    return res.status(400).json({ ok: false, error: 'Day is required.' });
-  }
-
-  // 3) Validate times: 24-hour strings like '07:00', '18:00', '24:00'
-  const is24h = (t) => /^([01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(t);
-  if (!is24h(start_time) || !is24h(end_time)) {
-    return res.status(400).json({ ok: false, error: 'Times must be HH:MM 24h format.' });
-  }
-
-  // Disallow start >= end (except 24:00 is only sensible for end)
-  const toMinutes = (t) => {
-    if (t === '24:00') return 24 * 60;
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  if (toMinutes(start_time) >= toMinutes(end_time)) {
-    return res.status(400).json({ ok: false, error: 'End time must be after start time.' });
-  }
-
-  const { error } = await supabase.from('votes').insert({
-    name: name.trim(),
-    email: email?.trim() || null,
-    day,
-    start_time,
-    end_time
-  });
-
-  if (error) {
-    return res.status(500).json({ ok: false, error: error.message });
-  }
-
-  return res.status(200).json({ ok: true });
 }
