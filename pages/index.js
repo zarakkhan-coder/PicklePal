@@ -6,7 +6,6 @@ import { useRouter } from "next/router";
 const DAYS = ["Saturday", "Sunday"];
 const HOURS = Array.from({ length: 25 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
 
-// very simple “normal click”
 function playClickSound() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -56,7 +55,7 @@ export default function Home() {
   async function submitVote(e) {
     e.preventDefault();
     setError("");
-    playClickSound(); // click when button pressed
+    playClickSound();
 
     if (!name.trim()) {
       setError("Please enter your name.");
@@ -74,17 +73,14 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          email: email.trim() || null, // optional
+          email: email.trim() || null,
           day,
           start_time: from,
           end_time: to,
         }),
       });
-
       const json = await res.json();
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to save vote");
-      }
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to save vote");
       router.push("/weekly");
     } catch (err) {
       setError(err.message || "Something went wrong.");
@@ -99,21 +95,21 @@ export default function Home() {
         <title>PicklePal — Vote to Play</title>
       </Head>
 
-      {/* soft side fills */}
+      {/* soft side fills behind everything */}
       <div className="edge edge-left" aria-hidden />
       <div className="edge edge-right" aria-hidden />
 
-      {/* court grid and floating art */}
-      <div className="court" aria-hidden />
-      <div className="pp-art" aria-hidden>
-        <span className="ball b1">🟡</span>
-        <span className="ball b2">🟡</span>
-        <span className="ball b3">🟡</span>
-        <span className="paddle pd1">🏓</span>
-        <span className="paddle pd2">🏓</span>
-      </div>
-
       <div className="pp-wrap">
+        {/* put the court+art INSIDE the wrapper so they stack above the background */}
+        <div className="court" aria-hidden />
+        <div className="pp-art" aria-hidden>
+          <span className="ball b1">🟡</span>
+          <span className="ball b2">🟡</span>
+          <span className="ball b3">🟡</span>
+          <span className="paddle pd1">🏓</span>
+          <span className="paddle pd2">🏓</span>
+        </div>
+
         <div className="pp-card">
           <div className="pp-header">
             <div className="logo">
@@ -205,11 +201,11 @@ export default function Home() {
           place-items: center;
           background: linear-gradient(180deg, #0b1b2a, #0b1b2a);
           padding: 32px 16px;
-          position: relative;
+          position: relative;   /* create stacking context */
           overflow: hidden;
         }
 
-        /* Side color fills */
+        /* side color fills (behind) */
         .edge {
           position: fixed;
           top: -10%;
@@ -217,7 +213,7 @@ export default function Home() {
           width: 40vw;
           filter: blur(40px);
           opacity: 0.25;
-          z-index: 0;
+          z-index: 0;           /* BEHIND */
           pointer-events: none;
         }
         .edge-left {
@@ -229,32 +225,24 @@ export default function Home() {
           background: radial-gradient(closest-side, #aefb6f, transparent 70%);
         }
 
-        /* court grid */
+        /* court grid — now ABOVE background but below card */
         .court {
-          position: fixed;
+          position: absolute;
           inset: 0;
           pointer-events: none;
           opacity: 0.22;
           background:
-            repeating-linear-gradient(
-              to right,
-              #224861 0 2px,
-              transparent 2px 90px
-            ),
-            repeating-linear-gradient(
-              to bottom,
-              #224861 0 2px,
-              transparent 2px 90px
-            );
-          z-index: 0;
+            repeating-linear-gradient(to right, #224861 0 2px, transparent 2px 90px),
+            repeating-linear-gradient(to bottom, #224861 0 2px, transparent 2px 90px);
+          z-index: 1;           /* BELOW card */
         }
 
         /* floating art */
         .pp-art {
-          position: fixed;
+          position: absolute;
           inset: 0;
           pointer-events: none;
-          z-index: 0;
+          z-index: 1;           /* BELOW card */
         }
         .ball, .paddle {
           position: absolute;
@@ -289,7 +277,7 @@ export default function Home() {
           box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4);
           padding: 28px;
           position: relative;
-          z-index: 2; /* keep above art */
+          z-index: 3;           /* ABOVE court/art */
         }
 
         .pp-header {
@@ -313,15 +301,11 @@ export default function Home() {
           box-shadow: 0 0 12px #ffd40088, 0 0 24px #ffd40044;
           animation: pulse 2.4s ease-in-out infinite;
         }
-        .logo-paddle {
-          font-size: 22px;
-          transform: translateY(1px);
-        }
+        .logo-paddle { font-size: 22px; transform: translateY(1px); }
         .tag { font-size: 14px; opacity: 0.8; }
         @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
 
         .pp-copy { margin: 10px 0 20px; opacity: 0.9; }
-
         .pp-form label { display:block; margin-bottom:14px; font-weight:600; }
         .pp-row { display:grid; gap:12px; grid-template-columns: 2fr 1fr 1fr; }
 
