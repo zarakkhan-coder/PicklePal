@@ -1,15 +1,42 @@
 // pages/index.js
 import { useEffect, useMemo, useState } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 
 const DAYS = ["Saturday", "Sunday"];
 
 // 24h times every 1 hour (00:00 ... 24:00)
-const HOURS = Array.from({ length: 25 }, (_, h) =>
-  `${String(h).padStart(2, "0")}:00`
-);
+const HOURS = Array.from({ length: 25 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
+
+// a tiny synthesized “pock” paddle-hit sound (no audio file needed)
+function playPaddleSound() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+
+    // Oscillator burst for a percussive "pock"
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+
+    o.type = "triangle";
+    o.frequency.setValueAtTime(650, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(140, ctx.currentTime + 0.08);
+
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.5, ctx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+
+    o.connect(g).connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.13);
+  } catch {
+    // ignore if AudioContext not available
+  }
+}
 
 export default function Home() {
+  const router = useRouter();
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [day, setDay] = useState("Saturday");
@@ -35,6 +62,9 @@ export default function Home() {
   async function submitVote(e) {
     e.preventDefault();
     setError("");
+
+    // play sound immediately on click (user gesture-friendly)
+    playPaddleSound();
 
     if (!name.trim()) {
       setError("Please enter your name.");
@@ -65,7 +95,7 @@ export default function Home() {
       }
 
       // go to results page
-      window.location.href = "/weekly";
+      router.push("/weekly");
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -78,6 +108,15 @@ export default function Home() {
       <Head>
         <title>PicklePal — Vote to Play</title>
       </Head>
+
+      {/* floating pickleball/paddle decor */}
+      <div className="pp-art" aria-hidden>
+        <span className="ball b1">🟡</span>
+        <span className="ball b2">🟡</span>
+        <span className="ball b3">🟡</span>
+        <span className="paddle pd1">🏓</span>
+        <span className="paddle pd2">🏓</span>
+      </div>
 
       <div className="pp-wrap">
         <div className="pp-card">
@@ -169,7 +208,10 @@ export default function Home() {
             radial-gradient(1200px 800px at 110% 0%, #6de3ff33 30%, transparent 60%),
             linear-gradient(180deg, #0b1b2a, #0b1b2a);
           padding: 32px 16px;
+          position: relative;
+          overflow: hidden;
         }
+
         .pp-card {
           width: 100%;
           max-width: 760px;
@@ -179,7 +221,9 @@ export default function Home() {
           border-radius: 16px;
           box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4);
           padding: 28px;
+          position: relative;
         }
+
         .pp-header {
           display: flex;
           align-items: center;
@@ -225,6 +269,7 @@ export default function Home() {
         input::placeholder {
           color: #7aa0bc;
         }
+
         .pp-btn {
           margin-top: 6px;
           width: 100%;
@@ -236,7 +281,18 @@ export default function Home() {
           font-weight: 800;
           letter-spacing: 0.3px;
           cursor: pointer;
+          transform: translateY(0);
+          transition: transform 160ms ease, box-shadow 160ms ease;
+          box-shadow: 0 6px 14px rgba(0,0,0,.25);
         }
+        .pp-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 18px rgba(0,0,0,.32);
+        }
+        .pp-btn:active {
+          transform: translateY(0);
+        }
+
         .pp-error {
           background: #441818;
           border: 1px solid #8b2e2e;
@@ -255,6 +311,43 @@ export default function Home() {
         }
         .req {
           color: #ff8b8b;
+        }
+
+        /* Decorative floating balls and paddles */
+        .pp-art {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          z-index: 0;
+        }
+        .ball, .paddle {
+          position: absolute;
+          opacity: 0.25;
+          filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
+        }
+        .ball {
+          font-size: 28px;
+          animation: float 16s linear infinite;
+        }
+        .b1 { left: 6%;  bottom: -50px; animation-duration: 18s; }
+        .b2 { left: 48%; bottom: -60px; animation-duration: 20s; }
+        .b3 { right: 8%; bottom: -55px; animation-duration: 17s; }
+
+        .paddle {
+          font-size: 42px;
+          transform: rotate(-18deg);
+          animation: slow-sway 9s ease-in-out infinite;
+        }
+        .pd1 { right: 5%; top: 12%; }
+        .pd2 { left: 4%; top: 20%; transform: rotate(14deg); }
+
+        @keyframes float {
+          0%   { transform: translateY(0) rotate(0deg); }
+          100% { transform: translateY(-120vh) rotate(360deg); }
+        }
+        @keyframes slow-sway {
+          0%,100% { transform: rotate(-18deg) translateY(0); }
+          50%     { transform: rotate(-10deg) translateY(6px); }
         }
       `}</style>
     </>
