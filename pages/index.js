@@ -47,3 +47,8 @@ export default async function handler(req, res) {
 
   return res.status(200).json({ ok: true, restored: count || payload.length });
 }
+// Disable static pre-render for the home page.
+// This avoids build-time crashes from browser-only features (Audio, window, etc.).
+export async function getServerSideProps() {
+  return { props: {} };
+}
