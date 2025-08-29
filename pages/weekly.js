@@ -112,3 +112,6 @@ export default function Weekly() {
     </>
   );
 }
+export async function getServerSideProps() {
+  return { props: {} };
+}
