@@ -1,236 +1,262 @@
 // pages/index.js
-import { useMemo, useState } from 'react';
-import { useRouter } from 'next/router';
+import { useEffect, useMemo, useState } from "react";
+import Head from "next/head";
 
-const DAYS = ['Saturday', 'Sunday'];
+const DAYS = ["Saturday", "Sunday"];
+
+// 24h times every 1 hour (00:00 ... 24:00)
+const HOURS = Array.from({ length: 25 }, (_, h) =>
+  `${String(h).padStart(2, "0")}:00`
+);
 
 export default function Home() {
-  const router = useRouter();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [day, setDay] = useState("Saturday");
+  const [from, setFrom] = useState("07:00");
+  const [to, setTo] = useState("08:00");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  // 24h slots: 00:00 → 24:00
-  const times = useMemo(
-    () => Array.from({ length: 25 }, (_, h) => `${String(h).padStart(2, '0')}:00`),
-    []
-  );
+  // only allow "to" > "from"
+  const toOptions = useMemo(() => {
+    const fromIdx = HOURS.indexOf(from);
+    return HOURS.slice(fromIdx + 1);
+  }, [from]);
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [day, setDay] = useState(DAYS[0]);
-  const [start, setStart] = useState('07:00');
-  const [end, setEnd] = useState('08:00');
-  const [error, setError] = useState('');
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    try {
-      const r = await fetch('/api/vote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          email: email || null, // optional
-          day,
-          start_time: start,
-          end_time: end
-        })
-      });
-      const out = await r.json();
-      if (!out.ok) throw new Error(out.error || 'Failed');
-
-      // Redirect to results after success
-      router.push('/weekly');
-    } catch (err) {
-      setError(err.message);
+  useEffect(() => {
+    // ensure "to" is after "from"
+    if (HOURS.indexOf(to) <= HOURS.indexOf(from)) {
+      const next = HOURS[HOURS.indexOf(from) + 1] || "24:00";
+      setTo(next);
     }
-  };
+  }, [from]); // eslint-disable-line
+
+  async function submitVote(e) {
+    e.preventDefault();
+    setError("");
+
+    if (!name.trim()) {
+      setError("Please enter your name.");
+      return;
+    }
+    if (HOURS.indexOf(to) <= HOURS.indexOf(from)) {
+      setError("End time must be after start time.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim() || null, // optional
+          day,
+          start_time: from,
+          end_time: to,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to save vote");
+      }
+
+      // go to results page
+      window.location.href = "/weekly";
+    } catch (err) {
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <div className="page">
-      {/* Hero / Header */}
-      <header className="hero">
-        <div className="hero-inner">
-          <div className="brand">
-            <span className="ball">🎾</span> <span>PicklePal</span>
+    <>
+      <Head>
+        <title>PicklePal — Vote to Play</title>
+      </Head>
+
+      <div className="pp-wrap">
+        <div className="pp-card">
+          <div className="pp-header">
+            <span className="pp-ball">🏓</span>
+            <h1>PicklePal</h1>
+            <p>Vote to Play</p>
           </div>
-          <h1>Vote to Play</h1>
-          <p>
-            Cast your vote for this weekend’s pickleball. <strong>Name is required</strong> —{' '}
-            <em>Email is optional</em> (you’ll get reminders if you add it).
+
+          <p className="pp-copy">
+            You can vote more than once; we’ll use the majority each week. Players who enter an email will receive reminders.
           </p>
+
+          <form onSubmit={submitVote} className="pp-form">
+            <label>
+              Name <span className="req">*</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                required
+              />
+            </label>
+
+            <label>
+              Email (optional)
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </label>
+
+            <div className="pp-row">
+              <label>
+                Day
+                <select value={day} onChange={(e) => setDay(e.target.value)}>
+                  {DAYS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                From
+                <select value={from} onChange={(e) => setFrom(e.target.value)}>
+                  {HOURS.slice(0, -1).map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                To
+                <select value={to} onChange={(e) => setTo(e.target.value)}>
+                  {toOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {error && <div className="pp-error">{error}</div>}
+
+            <button className="pp-btn" disabled={submitting}>
+              {submitting ? "Saving..." : "Submit Vote"}
+            </button>
+
+            <div className="pp-link">
+              <a href="/weekly">See weekly results →</a>
+            </div>
+          </form>
         </div>
-      </header>
-
-      {/* Card */}
-      <main className="card">
-        <form onSubmit={submit} className="form">
-          <div className="row">
-            <label>Name (required)</label>
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your full name"
-            />
-          </div>
-
-          <div className="row">
-            <label>Email (optional)</label>
-            <input
-              type="email"
-              inputMode="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div className="row">
-            <label>Day</label>
-            <select value={day} onChange={(e) => setDay(e.target.value)}>
-              {DAYS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="row times">
-            <div className="col">
-              <label>From</label>
-              <select value={start} onChange={(e) => setStart(e.target.value)}>
-                {times.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="col">
-              <label>To</label>
-              <select value={end} onChange={(e) => setEnd(e.target.value)}>
-                {times.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {error ? <div className="error">Error: {error}</div> : null}
-
-          <button className="cta" type="submit">
-            Submit Vote
-          </button>
-        </form>
-      </main>
+      </div>
 
       <style jsx>{`
-        .page {
+        .pp-wrap {
           min-height: 100vh;
-          background: linear-gradient(180deg, #f2fdf6 0%, #ffffff 60%);
+          display: grid;
+          place-items: center;
+          background: radial-gradient(1200px 600px at 20% -20%, #aefb6f33 30%, transparent 60%),
+            radial-gradient(1200px 800px at 110% 0%, #6de3ff33 30%, transparent 60%),
+            linear-gradient(180deg, #0b1b2a, #0b1b2a);
+          padding: 32px 16px;
         }
-        .hero {
-          background: radial-gradient(1200px 400px at 10% -10%, #e7ffe9 20%, transparent 55%),
-            radial-gradient(1000px 400px at 90% -30%, #e0fff9 10%, transparent 55%),
-            linear-gradient(90deg, #d8ffdb, #dff9ff);
-          color: #073b3a;
-          padding: 48px 24px 36px;
-          text-align: center;
-          border-bottom: 1px solid #e8f5e9;
+        .pp-card {
+          width: 100%;
+          max-width: 760px;
+          background: #0f2236;
+          color: #eaf6ff;
+          border: 1px solid #14314a;
+          border-radius: 16px;
+          box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4);
+          padding: 28px;
         }
-        .hero-inner {
-          max-width: 720px;
-          margin: 0 auto;
-        }
-        .brand {
-          display: inline-flex;
-          gap: 10px;
+        .pp-header {
+          display: flex;
           align-items: center;
-          font-weight: 800;
-          font-size: 20px;
-          letter-spacing: 1px;
-          color: #064e3b;
+          gap: 12px;
+          margin-bottom: 8px;
         }
-        .ball {
+        .pp-header h1 {
+          font-size: 28px;
+          margin: 0;
+        }
+        .pp-header p {
+          margin: 0;
+          opacity: 0.8;
+        }
+        .pp-ball {
           font-size: 28px;
         }
-        h1 {
-          margin: 12px 0 6px;
-          font-size: 40px;
-          letter-spacing: 0.2px;
+        .pp-copy {
+          margin: 10px 0 20px;
+          opacity: 0.9;
         }
-        p {
-          margin: 0 auto;
-          max-width: 640px;
-          color: #0f766e;
-          font-size: 16px;
-        }
-        .card {
-          max-width: 680px;
-          margin: -24px auto 40px;
-          background: #fff;
-          border: 1px solid #e5efe9;
-          box-shadow: 0 12px 30px rgba(7, 59, 58, 0.06);
-          border-radius: 16px;
-          padding: 24px;
-        }
-        .form .row {
-          display: flex;
-          flex-direction: column;
-          margin-bottom: 16px;
-        }
-        label {
+        .pp-form label {
+          display: block;
+          margin-bottom: 14px;
           font-weight: 600;
-          color: #065f46;
-          margin-bottom: 6px;
+        }
+        .pp-row {
+          display: grid;
+          gap: 12px;
+          grid-template-columns: 2fr 1fr 1fr;
         }
         input,
         select {
-          border: 1px solid #cfe9dc;
+          width: 100%;
+          margin-top: 6px;
+          padding: 10px 12px;
           border-radius: 10px;
-          padding: 12px 14px;
-          font-size: 15px;
+          border: 1px solid #244b6b;
+          background: #0b1b2a;
+          color: #eaf6ff;
           outline: none;
         }
-        input:focus,
-        select:focus {
-          border-color: #34d399;
-          box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.25);
+        input::placeholder {
+          color: #7aa0bc;
         }
-        .times {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 14px;
+        .pp-btn {
+          margin-top: 6px;
+          width: 100%;
+          padding: 12px 16px;
+          background: linear-gradient(135deg, #33cc66, #00b3ff);
+          border: none;
+          border-radius: 10px;
+          color: #03121d;
+          font-weight: 800;
+          letter-spacing: 0.3px;
+          cursor: pointer;
         }
-        .error {
-          background: #fff7ed;
-          border: 1px solid #fbbf24;
-          color: #92400e;
+        .pp-error {
+          background: #441818;
+          border: 1px solid #8b2e2e;
+          color: #ffc1c1;
           border-radius: 10px;
           padding: 10px 12px;
-          margin-bottom: 10px;
+          margin: 8px 0 12px;
         }
-        .cta {
-          background: linear-gradient(90deg, #34d399, #22c55e);
-          color: #06321a;
-          font-weight: 800;
-          border: none;
-          border-radius: 12px;
-          padding: 14px 16px;
-          width: 100%;
-          cursor: pointer;
-          box-shadow: 0 6px 18px rgba(34, 197, 94, 0.25);
-          transition: transform 0.05s ease, box-shadow 0.12s ease;
+        .pp-link {
+          margin-top: 10px;
+          text-align: center;
         }
-        .cta:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 8px 22px rgba(34, 197, 94, 0.28);
+        .pp-link a {
+          color: #7fd6ff;
+          text-decoration: none;
+        }
+        .req {
+          color: #ff8b8b;
         }
       `}</style>
-    </div>
+    </>
   );
 }
