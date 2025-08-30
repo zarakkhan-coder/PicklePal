@@ -2,49 +2,61 @@
 import { useEffect, useState } from "react";
 import Head from "next/head";
 
-function to12h(raw) {
-  if (!raw) return "";
-  const s = String(raw).trim();
-  // If it already looks like "7:00 AM" or "8:30 PM", keep it.
-  if (/(am|pm)/i.test(s)) return s;
+const BOOK_URL = "https://walmart.clubautomation.com/event/reserve-court-new";
 
-  // Otherwise, assume "HH:mm"
-  const [hh, mm] = s.split(":");
-  const h = Number(hh);
-  const m = Number(mm);
-  if (Number.isNaN(h) || Number.isNaN(m)) return s; // fallback
+// Postgres date_trunc('week', ...) returns the ISO week start (MONDAY).
+// Map ISO-week offset for each day:
+const ISO_OFFSET = {
+  Monday: 0,
+  Tuesday: 1,
+  Wednesday: 2,
+  Thursday: 3,
+  Friday: 4,
+  Saturday: 5,
+  Sunday: 6,
+};
 
-  const ampm = h < 12 ? "AM" : "PM";
-  const hour12 = (h % 12) || 12;
-  return `${hour12}:${String(m).padStart(2, "0")} ${ampm}`;
+// Build a Date (in UTC) for the given row's day using the week_start date
+function dateForRow(week_start, day) {
+  // ensure UTC so local TZ doesn’t shift the calendar day
+  const base = new Date(`${week_start}T00:00:00Z`);
+  const offsetDays = ISO_OFFSET[day] ?? 0;
+  return new Date(base.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+}
+
+// Short, locale-friendly date like "Aug 31"
+function fmtDate(d) {
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export default function Weekly() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      setLoading(true);
-      setErr("");
+    const load = async () => {
       try {
-        const res = await fetch("/api/weekly");
+        const res = await fetch(`/api/weekly?ts=${Date.now()}`, {
+          cache: "no-store",
+        });
         const json = await res.json();
-        if (!res.ok || !json.ok) {
-          throw new Error(json.error || "Failed to load weekly results.");
-        }
-        if (alive) setRows(Array.isArray(json.rows) ? json.rows : []);
+        if (!alive) return;
+        setRows(json.rows || []);
       } catch (e) {
-        if (alive) setErr(e.message || "Failed to load weekly results.");
+        console.error(e);
+        if (alive) setRows([]);
       } finally {
         if (alive) setLoading(false);
       }
-    })();
-    return () => { alive = false; };
+    };
+    load();
+    return () => {
+      alive = false;
+    };
   }, []);
 
+  // pick top suggestion (by votes, then earliest day/start)
   const top = rows[0];
 
   return (
@@ -55,68 +67,74 @@ export default function Weekly() {
 
       <div className="wrap">
         <div className="card">
-          <div className="head">
+          <div className="cardHead">
             <div className="brand">
               <span className="dot" />
               <h1>PicklePal</h1>
             </div>
-            <div className="muted">Weekly Results</div>
+            <div className="title">Weekly Results</div>
+          </div>
+
+          <div className="suggest">
+            <p>
+              <strong>Suggested slot (majority):</strong>{" "}
+              {top ? (
+                <>
+                  {top.day} — {fmtDate(dateForRow(top.week_start, top.day))}{" "}
+                  {top.start_time}–{top.end_time} ({top.votes}{" "}
+                  {top.votes === 1 ? "vote" : "votes"})
+                </>
+              ) : (
+                "No votes yet"
+              )}
+              {"  "}
+              <a href={BOOK_URL} target="_blank" rel="noreferrer">
+                Book court at Walmart ClubAutomation →
+              </a>
+            </p>
           </div>
 
           {loading ? (
-            <div className="muted" style={{ padding: "16px" }}>
-              Loading weekly results…
-            </div>
-          ) : err ? (
-            <div className="error">{err}</div>
+            <div className="loading">Loading…</div>
+          ) : rows.length === 0 ? (
+            <div className="empty">No votes yet for this week.</div>
           ) : (
-            <>
-              <div className="suggest">
-                {top ? (
-                  <>
-                    <strong>Suggested slot (majority):</strong>{" "}
-                    {top.day} {to12h(top.start_time)}–{to12h(top.end_time)}{" "}
-                    ({top.votes} {top.votes === 1 ? "vote" : "votes"}){" "}
-                    <a
-                      href="https://walmart.clubautomation.com/event/reserve-court-new"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Book court at Walmart ClubAutomation →
-                    </a>
-                  </>
-                ) : (
-                  <>No votes this week yet.</>
-                )}
-              </div>
-
-              <div className="table">
-                <div className="row headrow">
-                  <div>Day</div>
-                  <div>Start</div>
-                  <div>End</div>
-                  <div>Votes</div>
-                  <div>Players</div>
-                </div>
-                {rows.map((r, i) => (
-                  <div key={i} className="row">
-                    <div>{r.day}</div>
-                    <div>{to12h(r.start_time)}</div>
-                    <div>{to12h(r.end_time)}</div>
-                    <div>{r.votes}</div>
-                    <div>
-                      {Array.isArray(r.players)
-                        ? r.players.join(", ")
-                        : (Array.isArray(r.names) ? r.names.join(", ") : "")}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
+            <div className="tableWrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Day / Date</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Votes</th>
+                    <th>Players</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => {
+                    const playDate = dateForRow(r.week_start, r.day);
+                    return (
+                      <tr key={i}>
+                        <td>
+                          <strong>{r.day}</strong>{" "}
+                          <span className="muted">— {fmtDate(playDate)}</span>
+                        </td>
+                        <td>{r.start_time}</td>
+                        <td>{r.end_time}</td>
+                        <td>{r.votes}</td>
+                        <td>
+                          {(r.players || []).join(", ")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
 
           <div className="back">
-            <a href="/">← Back to vote</a>
+            ← <a href="/">Back to vote</a>
           </div>
         </div>
       </div>
@@ -126,84 +144,73 @@ export default function Weekly() {
           min-height: 100vh;
           display: grid;
           place-items: center;
-          background: radial-gradient(1200px 600px at 20% -20%, #aefb6f22 30%, transparent 60%),
-            radial-gradient(1200px 800px at 110% 0%, #6de3ff22 30%, transparent 60%),
-            linear-gradient(180deg, #0b1b2a, #0b1b2a);
-          padding: 32px 16px;
+          background: #08131e;
+          padding: 28px 16px;
         }
         .card {
           width: 100%;
-          max-width: 1100px;
+          max-width: 980px;
           background: #0f2236;
           color: #eaf6ff;
           border: 1px solid #14314a;
           border-radius: 16px;
-          box-shadow: 0 10px 50px rgba(0,0,0,0.4);
-          padding: 20px;
+          padding: 22px;
+          box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4);
         }
-        .head {
+        .cardHead {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
         }
         .brand {
           display: flex;
           align-items: center;
           gap: 10px;
         }
-        .brand h1 {
-          margin: 0;
-          font-size: 28px;
-        }
         .dot {
-          width: 10px;
-          height: 10px;
-          background: #f4f07a;
-          border-radius: 50%;
-          box-shadow: 0 0 10px #f4f07a;
+          width: 9px;
+          height: 9px;
+          border-radius: 999px;
+          background: #ffeb70;
+          box-shadow: 0 0 12px #ffeb70aa;
           display: inline-block;
         }
-        .muted {
-          opacity: 0.8;
+        h1 {
+          margin: 0;
+          font-size: 22px;
         }
-        .error {
-          background: #441818;
-          border: 1px solid #8b2e2e;
-          color: #ffc1c1;
-          border-radius: 10px;
-          padding: 12px;
-          margin: 8px 0 12px;
+        .title {
+          opacity: 0.7;
         }
         .suggest {
           background: #0b1b2a;
-          border: 1px solid #204261;
+          border: 1px solid #203e57;
           border-radius: 10px;
           padding: 12px 14px;
-          margin: 6px 0 16px;
+          margin-bottom: 16px;
         }
         .suggest a {
-          margin-left: 10px;
           color: #7fd6ff;
+          margin-left: 8px;
           text-decoration: none;
         }
-        .table {
-          display: grid;
-          gap: 6px;
-          margin-top: 8px;
+        .tableWrap {
+          overflow-x: auto;
         }
-        .row {
-          display: grid;
-          grid-template-columns: 2fr 1fr 1fr 1fr 4fr;
-          gap: 10px;
-          padding: 10px 12px;
-          border-bottom: 1px solid #173754;
+        .tbl {
+          width: 100%;
+          border-collapse: collapse;
         }
-        .headrow {
-          font-weight: 700;
-          opacity: 0.85;
-          border-bottom: 1px solid #204261;
-          padding-bottom: 8px;
+        .tbl th,
+        .tbl td {
+          text-align: left;
+          padding: 10px 8px;
+          border-bottom: 1px solid #17344a;
+          vertical-align: top;
+        }
+        .muted {
+          opacity: 0.8;
         }
         .back {
           margin-top: 16px;
@@ -211,6 +218,11 @@ export default function Weekly() {
         .back a {
           color: #7fd6ff;
           text-decoration: none;
+        }
+        .loading,
+        .empty {
+          padding: 16px 8px;
+          opacity: 0.9;
         }
       `}</style>
     </>
