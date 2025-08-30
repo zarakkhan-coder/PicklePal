@@ -6,17 +6,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-export default async function handler(_req, res) {
-  try {
-    const { data, error } = await supabase
-      .from('weekly_tally')
-      .select('*')
-      .order('votes', { ascending: false });
+export default async function handler(req, res) {
+  // Make sure Vercel/CDN doesn’t cache this
+  res.setHeader('Cache-Control', 'no-store');
 
-    if (error) return res.status(400).json({ ok: false, error: error.message });
+  const { data, error } = await supabase
+    .from('weekly_tally')
+    .select('week_start, day, start_time, end_time, votes, players');
 
-    return res.status(200).json({ ok: true, rows: data || [] });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message });
+  if (error) {
+    return res.status(500).json({ ok: false, error: error.message });
   }
+
+  return res.status(200).json({ ok: true, rows: data || [] });
 }
