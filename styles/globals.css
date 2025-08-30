@@ -2,20 +2,26 @@
 :root{--slate-50:#f8fafc;--slate-900:#0f172a;--blue-600:#2563eb;--emerald-600:#059669;}
 *{box-sizing:border-box}
 
-/* Base + prevent sideways scroll */
+/* Base + kill horizontal scrolling in every webview */
 html,body{
   padding:0;
   margin:0;
   font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Arial;
-  width:100%;
-  max-width:100%;
-  overflow-x:hidden;            /* kill any side scrolling */
-  background:#071521;
+  width:100% !important;
+  max-width:100% !important;
+  overflow-x: hidden !important;   /* primary guard */
+  position:relative;
 }
 
-a{color:inherit;text-decoration:none}
+/* Some in-app webviews need the root Next.js node limited too */
+#__next{
+  width:100% !important;
+  max-width:100% !important;
+  overflow-x: clip !important;     /* “clip” is stricter than hidden on iOS WKWebView */
+}
 
-/* Utilities */
+/* Utilities (kept from your file) */
+a{color:inherit;text-decoration:none}
 .min-h-screen{min-height:100vh}
 .bg-slate-50{background:var(--slate-50)}
 .text-slate-900{color:var(--slate-900)}
@@ -45,54 +51,53 @@ a{color:inherit;text-decoration:none}
 .backdrop-blur{backdrop-filter:saturate(180%) blur(6px)}
 .border-b{border-bottom:1px solid #e5e7eb}
 
-/* Body/link colors */
+/* Body/link colors (yours) */
 body{
-  color:#e8fbff;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  color:#082f2a;
 }
-a{ color:#7fd6ff; }
+a{ color:#0f766e; }
 
-/* =========================
-   Center the page on mobile
-   ========================= */
-
-/* Outer wrappers (vote page + results) */
+/* ============================================
+   Center main/results cards + safe-area padding
+   ============================================ */
 .pp-wrap,
 .results-wrap{
   min-height:100vh;
-  display:grid;
-  place-items:start center; /* vertically start, horizontally center */
-  /* Safe-area padding so the card never hugs the iPhone curved edges */
-  padding-top:24px;
-  padding-bottom:24px;
+  width:100%;
+  display:flex;
+  align-items:flex-start;              /* top align card */
+  justify-content:center;              /* center horizontally */
+  /* Normal padding + iOS safe-area guards */
+  padding:24px 16px;
   padding-left: max(16px, env(safe-area-inset-left));
   padding-right:max(16px, env(safe-area-inset-right));
 }
 
-/* The cards themselves */
+/* Card width and normal centering */
 .pp-card,
 .results-card,
 .weekly-card{
   width:min(760px, 94vw);
-  margin:0 auto;
-  background:#0f2236;
-  color:#eaf6ff;
-  border:1px solid #14314a;
-  border-radius:16px;
-  box-shadow:0 10px 50px rgba(0,0,0,0.4);
-  padding:28px;
-  position:relative;
-  z-index:1;      /* sit above background decorations */
+  margin-left:auto !important;
+  margin-right:auto !important;
 }
 
-/* Force rock-solid centering on small screens */
-@media (max-width: 700px){
-  .pp-card, .results-card, .weekly-card{
+/* Mobile fallback: force center with transform in stubborn webviews */
+@media (max-width: 768px){
+  .pp-card,
+  .results-card,
+  .weekly-card{
+    position:relative;
     left:50%;
     transform:translateX(-50%);
+    width:min(92vw, 760px);
+    max-width:760px;
   }
 }
 
-/* Background decorations never push layout width */
+/* Background decorations never affect layout width */
 .bg-ball,.bg-paddle{
   position:fixed;
   width:44px;
@@ -101,12 +106,11 @@ a{ color:#7fd6ff; }
   opacity:.9;
   pointer-events:none;
   will-change:transform;
-  z-index:0;
 }
 
-/* =========================
-   Mini-game: keep page steady
-   ========================= */
+/* ============================================
+   Mini-game: keep page steady while playing
+   ============================================ */
 .game{ margin-top:20px; }
 
 .game .board,
@@ -114,16 +118,22 @@ canvas{
   display:block;
   width:100%;
   max-width:100%;
-  height:300px;      /* visual height; canvas handles DPR */
+  height:300px;            /* visual height; canvas handles DPR */
   background:#061724;
   border-radius:12px;
-  touch-action:none; /* stops page from moving while swiping the paddle */
+  touch-action:none;       /* stops page from scrolling while dragging/touching */
 }
 
-/* Small phones: slightly tighter padding */
+/* Small phones: slightly tighter card */
 @media (max-width:640px){
-  .pp-card, .results-card, .weekly-card{
+  .pp-card,.results-card,.weekly-card{
     padding:18px;
     border-radius:14px;
   }
+}
+
+/* Safe-area padding on body (extra safety for weird webviews) */
+@supports (padding: max(0px)) {
+  body { padding-left: max(0px, env(safe-area-inset-left));
+         padding-right:max(0px, env(safe-area-inset-right)); }
 }
