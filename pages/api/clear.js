@@ -6,42 +6,44 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Monday-start week range in UTC
-function weekRangeUTC(d = new Date()) {
-  const now = new Date(d);
-  const dow = now.getUTCDay(); // 0=Sun..6=Sat
-  const daysSinceMon = (dow + 6) % 7;
-  const start = new Date(Date.UTC(
+function getUtcWeekBounds() {
+  const now = new Date();
+  // Monday-week in UTC, to match Postgres date_trunc('week', now())
+  const day = now.getUTCDay(); // 0=Sun .. 6=Sat
+  const diffSinceMon = (day + 6) % 7; // 0 if Mon, 6 if Sun
+  const weekStart = new Date(Date.UTC(
     now.getUTCFullYear(),
     now.getUTCMonth(),
-    now.getUTCDate() - daysSinceMon, 0, 0, 0, 0
+    now.getUTCDate() - diffSinceMon, 0, 0, 0, 0
   ));
-  const end = new Date(start);
-  end.setUTCDate(start.getUTCDate() + 7);
-  return { start, end };
+  const nextWeekStart = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return { weekStart, nextWeekStart };
 }
 
 export default async function handler(req, res) {
-  // Admin PIN check
-  const pin = (req.query.pin || req.body?.pin || '').toString().trim();
-  if (!pin || pin !== (process.env.ADMIN_PIN || '').toString().trim()) {
-    return res.status(403).json({ ok: false, error: 'Forbidden' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  const { start, end } = weekRangeUTC();
+  const { pin } = req.body || {};
+  if (!pin || pin !== process.env.ADMIN_PIN) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
 
-  // Mark all of this week’s votes as cleared
+  const { weekStart, nextWeekStart } = getUtcWeekBounds();
+  const nowIso = new Date().toISOString();
+
   const { data, error } = await supabase
     .from('votes')
-    .update({ cleared_at: new Date().toISOString() })
-    .gte('created_at', start.toISOString())
-    .lt('created_at', end.toISOString())
+    .update({ cleared_at: nowIso })
     .is('cleared_at', null)
+    .gte('created_at', weekStart.toISOString())
+    .lt('created_at', nextWeekStart.toISOString())
     .select('id');
 
   if (error) {
     return res.status(500).json({ ok: false, error: error.message });
   }
 
-  return res.status(200).json({ ok: true, cleared: data?.length || 0 });
+  return res.status(200).json({ ok: true, cleared: (data || []).length });
 }
