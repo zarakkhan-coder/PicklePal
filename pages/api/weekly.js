@@ -7,16 +7,16 @@ const supabase = createClient(
 );
 
 export default async function handler(_req, res) {
-  const { data, error } = await supabase
-    .from('weekly_tally')
-    .select('week_start, day, start_time, end_time, votes, players')
-    .order('votes', { ascending: false })
-    .order('day', { ascending: true })
-    .order('start_time', { ascending: true });
+  try {
+    const { data, error } = await supabase
+      .from('weekly_tally')
+      .select('*')
+      .order('votes', { ascending: false });
 
-  if (error) {
-    return res.status(500).json({ ok: false, error: error.message });
+    if (error) return res.status(400).json({ ok: false, error: error.message });
+
+    return res.status(200).json({ ok: true, rows: data || [] });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
   }
-
-  return res.status(200).json({ ok: true, rows: data || [] });
 }
