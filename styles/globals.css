@@ -1,8 +1,21 @@
 /* tiny utility palette so it looks clean without Tailwind build */
 :root{--slate-50:#f8fafc;--slate-900:#0f172a;--blue-600:#2563eb;--emerald-600:#059669;}
 *{box-sizing:border-box}
-html,body{padding:0;margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Arial}
+
+/* Base */
+html,body{
+  padding:0;
+  margin:0;
+  font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Arial;
+  /* prevent any sideways scrolling caused by background art/canvas/etc */
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+}
+
 a{color:inherit;text-decoration:none}
+
+/* Utilities (unchanged) */
 .min-h-screen{min-height:100vh}
 .bg-slate-50{background:var(--slate-50)}
 .text-slate-900{color:var(--slate-900)}
@@ -31,62 +44,65 @@ a{color:inherit;text-decoration:none}
 .sticky{position:sticky}.top-0{top:0}.z-10{z-index:10}
 .backdrop-blur{backdrop-filter:saturate(180%) blur(6px)}
 .border-b{border-bottom:1px solid #e5e7eb}
-body {
+
+/* Body/link colors (yours) */
+body{
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-  color: #082f2a;
+  "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  color:#082f2a;
 }
-a {
-  color: #0f766e;
-}
-/* ===== Mobile centering & no horizontal scroll ===== */
-html, body {
-  max-width: 100%;
-  overflow-x: hidden;               /* kill horizontal scroll from background art */
+a{ color:#0f766e; }
+
+/* ============================================
+   Center main screens + results on mobile
+   ============================================ */
+
+/* Wraps that center the content */
+.pp-wrap,
+.results-wrap{
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  padding:24px 16px;
 }
 
-/* Main wrapper centers the card on every screen */
-.pp-wrap {
-  min-height: 100vh;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 24px 16px;
+/* The cards themselves stay centered and responsive */
+.pp-card,
+.results-card,
+.weekly-card{
+  width:min(760px, 94vw);
+  margin-left:auto !important;
+  margin-right:auto !important;
 }
 
-/* Card width is responsive and centered */
-.pp-card {
-  width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
+/* Background decorations never push layout width */
+.bg-ball,.bg-paddle{
+  position:fixed;
+  width:44px;
+  height:44px;
+  filter:drop-shadow(0 6px 12px rgba(0,0,0,.35));
+  opacity:.9;
+  pointer-events:none;
+  will-change:transform;
 }
 
-/* Background decorations must never push layout width */
-.bg-ball, .bg-paddle {
-  position: fixed;
-  width: 44px;
-  height: 44px;
-  filter: drop-shadow(0 6px 12px rgba(0,0,0,.35));
-  opacity: .9;
-  pointer-events: none;             /* purely decorative */
-  will-change: transform;
+/* ============================================
+   Mini-game: keep page steady while playing
+   ============================================ */
+.game{ margin-top:20px; }
+
+.game .board,
+canvas{
+  display:block;
+  width:100%;
+  max-width:100%;
+  height:300px;            /* visual height; canvas handles device pixel ratio */
+  background:#061724;
+  border-radius:12px;
+  touch-action:none;       /* prevents page scroll while dragging/touching canvas */
 }
 
-/* Mini-game: prevent page scroll while playing/touching */
-.game {
-  margin-top: 20px;
-}
-
-.game .board {
-  display: block;
-  width: 100%;
-  height: 300px;                    /* visual height; canvas handles DPR */
-  background: #061724;
-  border-radius: 12px;
-  touch-action: none;               /* stops the page from scrolling during touch */
-}
-
-/* Keep the card nicely sized on small phones */
-@media (max-width: 640px) {
-  .pp-card { width: min(94vw, 760px); }
+/* Small phones: slightly tighter padding */
+@media (max-width:640px){
+  .pp-card,.results-card,.weekly-card{ width:min(94vw,760px); padding:18px; border-radius:14px; }
 }
