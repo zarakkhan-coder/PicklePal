@@ -1,45 +1,111 @@
-/* ===== HARD CENTER ON ALL WEBVIEWS (Teams/WhatsApp iOS) =====
-   Compute side margins from the viewport width so the card is
-   centered regardless of any hidden gutter the webview adds.  */
-:root { --cardw: min(92vw, 760px); }
+/* ---------- Utility palette & tiny utility classes (unchanged) ---------- */
+:root{--slate-50:#f8fafc;--slate-900:#0f172a;--blue-600:#2563eb;--emerald-600:#059669;}
+*{box-sizing:border-box}
+html,body{padding:0;margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Arial}
+a{color:inherit;text-decoration:none}
+.min-h-screen{min-height:100vh}
+.bg-slate-50{background:var(--slate-50)}
+.text-slate-900{color:var(--slate-900)}
+.bg-white{background:#fff}
+.text-blue-600{color:var(--blue-600)}
+.text-emerald-600{color:var(--emerald-600)}
+.border{border:1px solid #e5e7eb}
+.rounded{border-radius:8px}
+.rounded-xl{border-radius:16px}
+.shadow{box-shadow:0 10px 20px rgba(0,0,0,.05)}
+.p-2{padding:.5rem}.p-3{padding:.75rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.py-2{padding:.5rem 0}.py-3{padding:.75rem 0}.py-8{padding:2rem 0}
+.mt-3{margin-top:.75rem}.mb-3{margin-bottom:.75rem}.mb-4{margin-bottom:1rem}.mb-6{margin-bottom:1.5rem}
+.mx-auto{margin-left:auto;margin-right:auto}
+.max-w-2xl{max-width:42rem}.max-w-4xl{max-width:56rem}
+.text-3xl{font-size:1.875rem;line-height:2.25rem}
+.text-2xl{font-size:1.5rem;line-height:2rem}
+.font-bold{font-weight:700}.font-extrabold{font-weight:800}.font-semibold{font-weight:600}
+.text-sm{font-size:.875rem}.text-xs{font-size:.75rem}
+.text-slate-600{color:#475569}
+.bg-blue-600{background:var(--blue-600)}.hover\:bg-blue-700:hover{background:#1d4ed8}
+.bg-emerald-600{background:var(--emerald-600)}
+.text-white{color:#fff}
+.w-full{width:100%}
+.grid{display:grid}.grid-cols-1{grid-template-columns:1fr}.sm\:grid-cols-3{grid-template-columns:1fr}.gap-3{gap:.75rem}
+@media(min-width:640px){.sm\:grid-cols-3{grid-template-columns:repeat(3,1fr)}}
+.sticky{position:sticky}.top-0{top:0}.z-10{z-index:10}
+.backdrop-blur{backdrop-filter:saturate(180%) blur(6px)}
+.border-b{border-bottom:1px solid #e5e7eb}
 
+/* ---------- Site base ---------- */
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  color: #082f2a;
+}
+a { color: #0f766e; }
+
+/* ---------- Mobile centering & scroll fixes (NEW & SIMPLE) ---------- */
+/* Kill any hidden gutter & horizontal scroll in in-app browsers */
 html, body, #__next {
   width: 100% !important;
   max-width: 100% !important;
-  overflow-x: clip !important;   /* stricter than hidden on iOS WKWebView */
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow-x: hidden !important;
 }
 
-/* Main/result card centering – belt & suspenders */
+/* The page wrappers span the full viewport and center children */
+:root{
+  --page-pad-l: max(16px, env(safe-area-inset-left));
+  --page-pad-r: max(16px, env(safe-area-inset-right));
+}
+
+.pp-wrap,
+.results-wrap {
+  min-height: 100vh;
+  width: 100%;
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: center !important;
+  padding-left: var(--page-pad-l);
+  padding-right: var(--page-pad-r);
+}
+
+/* The cards center themselves with auto margins (no calc/vw math) */
 .pp-card,
 .results-card,
 .weekly-card {
-  width: var(--cardw) !important;
-  max-width: 760px !important;
-
-  /* Center by margins computed from viewport */
-  margin-left: calc((100vw - var(--cardw)) / 2) !important;
-  margin-right: calc((100vw - var(--cardw)) / 2) !important;
-
-  /* Neutralize any previous transforms/left that some webviews keep */
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto !important;
   position: relative !important;
-  left: 0 !important;
+  left: auto !important;
+  right: auto !important;
   transform: none !important;
 }
 
-/* Keep the wrappers full-width with safe-area padding, but
-   don’t let wrapper padding push the card off-center */
-.pp-wrap,
-.results-wrap {
-  width: 100vw !important;
-  padding-left: max(16px, env(safe-area-inset-left));
-  padding-right: max(16px, env(safe-area-inset-right));
-  justify-content: center;   /* for non-WKWebView browsers */
+/* Decorations shouldn’t affect layout or scrolling */
+.bg-ball, .bg-paddle {
+  position: fixed;
+  width: 44px;
+  height: 44px;
+  filter: drop-shadow(0 6px 12px rgba(0,0,0,.35));
+  opacity: .9;
+  pointer-events: none;
+  will-change: transform;
 }
 
-/* Canvas/game stays inside the card width and won’t overflow */
-.game .board,
-canvas {
+/* Mini-game: prevent page scroll while playing/touching */
+.game { margin-top: 20px; }
+.game .board, canvas {
+  display: block;
   width: 100% !important;
   max-width: 100% !important;
+  height: 300px;
+  background: #061724;
+  border-radius: 12px;
   touch-action: none;
+}
+
+/* Small phones: keep comfortable side padding but center content */
+@media (max-width: 640px) {
+  .pp-card, .results-card, .weekly-card {
+    width: min(94vw, 760px);
+  }
 }
