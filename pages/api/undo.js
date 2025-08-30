@@ -6,40 +6,41 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-function weekRangeUTC(d = new Date()) {
-  const now = new Date(d);
-  const dow = now.getUTCDay();
-  const daysSinceMon = (dow + 6) % 7;
-  const start = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() - daysSinceMon, 0, 0, 0, 0
-  ));
-  const end = new Date(start);
-  end.setUTCDate(start.getUTCDate() + 7);
-  return { start, end };
-}
-
 export default async function handler(req, res) {
-  const pin = (req.query.pin || req.body?.pin || '').toString().trim();
-  if (!pin || pin !== (process.env.ADMIN_PIN || '').toString().trim()) {
-    return res.status(403).json({ ok: false, error: 'Forbidden' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  const { start, end } = weekRangeUTC();
+  const { pin } = req.body || {};
+  if (!pin || pin !== process.env.ADMIN_PIN) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
 
-  // Restore any votes cleared this week
+  // Find the most recent cleared_at timestamp
+  const { data: last, error: findErr } = await supabase
+    .from('votes')
+    .select('cleared_at')
+    .not('cleared_at', 'is', null)
+    .order('cleared_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (findErr) {
+    return res.status(500).json({ ok: false, error: findErr.message });
+  }
+  if (!last || !last.cleared_at) {
+    return res.status(200).json({ ok: true, undone: 0 });
+  }
+
   const { data, error } = await supabase
     .from('votes')
     .update({ cleared_at: null })
-    .gte('created_at', start.toISOString())
-    .lt('created_at', end.toISOString())
-    .not('cleared_at', 'is', null)
+    .eq('cleared_at', last.cleared_at)
     .select('id');
 
   if (error) {
     return res.status(500).json({ ok: false, error: error.message });
   }
 
-  return res.status(200).json({ ok: true, restored: data?.length || 0 });
+  return res.status(200).json({ ok: true, undone: (data || []).length });
 }
