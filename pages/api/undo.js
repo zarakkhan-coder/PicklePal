@@ -7,43 +7,24 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST only' });
+  if (req.method !== 'POST')
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
   const { pin } = req.body || {};
-  if (!pin || String(pin) !== String(process.env.ADMIN_PIN)) {
-    return res.status(401).json({ ok: false, error: 'Invalid PIN' });
+  if (!pin || pin !== process.env.ADMIN_PIN)
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+
+  try {
+    const { error } = await supabase
+      .from('votes')
+      .update({ cleared_at: null })
+      .not('cleared_at', 'is', null)
+      .gte('created_at', new Date(new Date().toDateString()))
+      .filter('created_at', 'gte', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
+
+    if (error) return res.status(400).json({ ok: false, error: error.message });
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
   }
-
-  // Latest backup
-  const { data: backups, error } = await supabase
-    .from('weekly_backups')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  if (error) return res.status(500).json({ ok: false, error: error.message });
-  if (!backups?.length) return res.status(200).json({ ok: false, error: 'No backup to restore' });
-
-  const backup = backups[0];
-  const rows = backup.rows || [];
-
-  if (!rows.length) return res.status(200).json({ ok: false, error: 'Backup empty' });
-
-  // Insert only relevant columns
-  const payload = rows.map(r => ({
-    name: r.name ?? null,
-    email: r.email ?? null,
-    day: r.day,
-    start_time: r.start_time,
-    end_time: r.end_time,
-    created_at: r.created_at
-  }));
-
-  const { error: insErr, count } = await supabase
-    .from('votes')
-    .insert(payload, { count: 'exact' });
-
-  if (insErr) return res.status(500).json({ ok: false, error: insErr.message });
-
-  return res.status(200).json({ ok: true, restored: count || payload.length });
 }
