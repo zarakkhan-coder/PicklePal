@@ -1,10 +1,17 @@
 // pages/index.js
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
+import Shell from '../components/Shell';
 
 const DAYS = ['Saturday', 'Sunday'];
 const HOURS = Array.from({ length: 25 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
-const ADMIN_PIN = '5724'; // you asked for the code explicitly
+
+function hhmmToLabel(s) {
+  const [H, M] = s.split(':').map(Number);
+  const ampm = H >= 12 ? 'PM' : 'AM';
+  const h12 = ((H + 11) % 12) + 1;
+  return `${h12}:${M.toString().padStart(2, '0')} ${ampm}`;
+}
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -14,37 +21,71 @@ export default function Home() {
   const [to, setTo] = useState('08:00');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const clickRef = useRef(null);
-  const lastClearRef = useRef(null);
+  const [wx, setWx] = useState({ sat: null, sun: null });
 
-  // load click sound only on the client
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // small subtle click (data URI), safe for SSR
-      clickRef.current = new Audio(
-        'data:audio/wav;base64,UklGRkYAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQgAAAAAAP//AAAAAP//AAAAAP//AAAAAP//AAAA'
-      );
-    }
-  }, []);
+  const audioRef = useRef(null);
 
   const toOptions = useMemo(() => {
-    const i = HOURS.indexOf(from);
-    return HOURS.slice(i + 1);
+    const fromIdx = HOURS.indexOf(from);
+    return HOURS.slice(fromIdx + 1);
   }, [from]);
 
   useEffect(() => {
+    // keep "to" > "from"
     if (HOURS.indexOf(to) <= HOURS.indexOf(from)) {
-      setTo(HOURS[HOURS.indexOf(from) + 1] || '24:00');
+      const next = HOURS[HOURS.indexOf(from) + 1] || '24:00';
+      setTo(next);
     }
   }, [from]); // eslint-disable-line
+
+  // Weather (Open-Meteo, Bentonville AR ~ Walmart Home Office)
+  useEffect(() => {
+    (async () => {
+      try {
+        // Bentonville, AR
+        const lat = 36.3729, lon = -94.2088;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto`;
+        const r = await fetch(url);
+        const j = await r.json();
+        // find next Sat & Sun in returned daily time[] (ISO dates)
+        const times = j?.daily?.time || [];
+        const max = j?.daily?.temperature_2m_max || [];
+        const min = j?.daily?.temperature_2m_min || [];
+        const pop = j?.daily?.precipitation_probability_max || [];
+        const toObj = (k) => ({
+          date: times[k],
+          tmax: max[k],
+          tmin: min[k],
+          pop: pop[k]
+        });
+
+        let sat = null, sun = null;
+        for (let i = 0; i < times.length; i++) {
+          const d = new Date(times[i]).getDay();
+          if (d === 6 && !sat) sat = toObj(i); // Saturday
+          if (d === 0 && !sun) sun = toObj(i); // Sunday
+        }
+        setWx({ sat, sun });
+      } catch {}
+    })();
+  }, []);
 
   async function submitVote(e) {
     e.preventDefault();
     setError('');
-    if (!name.trim()) return setError('Please enter your name.');
+
+    if (!name.trim()) {
+      setError('Please enter your name.');
+      return;
+    }
+    if (HOURS.indexOf(to) <= HOURS.indexOf(from)) {
+      setError('End time must be after start time.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      setSubmitting(true);
-      const r = await fetch('/api/vote', {
+      const res = await fetch('/api/vote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,143 +93,157 @@ export default function Home() {
           email: email.trim() || null,
           day,
           start_time: from,
-          end_time: to,
-        }),
+          end_time: to
+        })
       });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j.error || 'Failed');
-      if (clickRef.current) clickRef.current.play().catch(() => {});
+      const j = await res.json();
+      if (!res.ok || !j.ok) throw new Error(j.error || 'Failed to save vote');
+
+      // subtle click
+      audioRef.current?.play?.();
+
       window.location.href = '/weekly';
-    } catch (e) {
-      setError(e.message || 'Something went wrong.');
+    } catch (err) {
+      setError(err.message || 'Something went wrong.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function clearVotes() {
-    const pin = prompt('Admin PIN to clear this week:');
-    if (pin !== ADMIN_PIN) return alert('Wrong PIN.');
-    const r = await fetch('/api/admin/clear', {
+  function askPinThen(path) {
+    const pin = prompt('Admin PIN to proceed:');
+    if (!pin) return;
+    fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin }),
-    });
-    const j = await r.json();
-    if (!r.ok || !j.ok) return alert(j.error || 'Failed to clear.');
-    lastClearRef.current = j.payload || [];
-    try { localStorage.setItem('lastClearPayload', JSON.stringify(j.payload || [])); } catch {}
-    alert('Cleared this week’s votes.');
-  }
-
-  async function undoClear() {
-    const payload =
-      lastClearRef.current ||
-      (() => { try { return JSON.parse(localStorage.getItem('lastClearPayload') || '[]'); } catch { return []; } })();
-    if (!payload || payload.length === 0) return alert('Nothing to undo.');
-    const pin = prompt('Admin PIN to undo:');
-    if (pin !== ADMIN_PIN) return alert('Wrong PIN.');
-    const r = await fetch('/api/admin/undo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin, payload }),
-    });
-    const j = await r.json();
-    if (!r.ok || !j.ok) return alert(j.error || 'Failed to undo.');
-    alert(`Restored ${j.count} votes.`);
+      body: JSON.stringify({ pin })
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.ok) alert(j.error || 'Failed');
+        else alert('Done!');
+      })
+      .catch(() => alert('Failed'));
   }
 
   return (
     <>
-      <Head><title>PicklePal — Vote</title></Head>
-      <div className="wrap">
-        <div className="card">
-          <div className="header">
-            <span className="dot" />
-            <h1>PicklePal</h1>
-            <span className="sub">Vote to Play</span>
+      <Head><title>PicklePal — Vote to Play</title></Head>
+      <audio ref={audioRef} preload="auto">
+        {/* short, light click */}
+        <source src="data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQAA" type="audio/mp3" />
+      </audio>
+      <Shell>
+        <div className="wrap">
+          <div className="card">
+            <div className="hdr">
+              <div><span className="dot" /> <span className="brand">PicklePal</span></div>
+              <div className="muted">Vote to Play</div>
+            </div>
+
+            {/* Weather chips */}
+            <div className="wx">
+              {wx.sat && (
+                <span className="chip">
+                  <b>Saturday</b>&nbsp;
+                  {Math.round(wx.sat.tmax)}° / {Math.round(wx.sat.tmin)}°&nbsp;
+                  <span className="muted">{wx.sat.pop ?? 0}%</span>
+                </span>
+              )}
+              {wx.sun && (
+                <span className="chip">
+                  <b>Sunday</b>&nbsp;
+                  {Math.round(wx.sun.tmax)}° / {Math.round(wx.sun.tmin)}°&nbsp;
+                  <span className="muted">{wx.sun.pop ?? 0}%</span>
+                </span>
+              )}
+            </div>
+
+            <p className="copy">
+              You can vote more than once; we’ll use the majority each week. Players who enter an email will receive reminders.
+            </p>
+
+            <form onSubmit={submitVote} className="form">
+              <label>
+                Name <span className="req">*</span>
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name" required />
+              </label>
+
+              <label>
+                Email (optional)
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+              </label>
+
+              <div className="row">
+                <label>
+                  Day
+                  <select value={day} onChange={e => setDay(e.target.value)}>
+                    {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </label>
+
+                <label>
+                  From
+                  <select value={from} onChange={e => setFrom(e.target.value)}>
+                    {HOURS.slice(0, -1).map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </label>
+
+                <label>
+                  To
+                  <select value={to} onChange={e => setTo(e.target.value)}>
+                    {toOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              {error && <div className="err">{error}</div>}
+
+              <button className="btn" disabled={submitting}>{submitting ? 'Saving…' : 'Submit Vote'}</button>
+
+              <div className="link"><a href="/weekly">See weekly results →</a></div>
+
+              <div className="admin">
+                <button type="button" className="small danger" onClick={() => askPinThen('/api/clear')}>Clear this week’s votes</button>
+                <button type="button" className="small" onClick={() => askPinThen('/api/undo')}>Undo last clear</button>
+              </div>
+            </form>
           </div>
-
-          <p className="copy">
-            You can vote more than once; we’ll use the majority each week. Players who enter an email will receive
-            reminders.
-          </p>
-
-          <form onSubmit={submitVote}>
-            <label>Name <span className="req">*</span>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name" required />
-            </label>
-
-            <label>Email (optional)
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
-            </label>
-
-            <div className="row">
-              <label>Day
-                <select value={day} onChange={e => setDay(e.target.value)}>
-                  {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </label>
-
-              <label>From
-                <select value={from} onChange={e => setFrom(e.target.value)}>
-                  {HOURS.slice(0, -1).map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </label>
-
-              <label>To
-                <select value={to} onChange={e => setTo(e.target.value)}>
-                  {toOptions.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </label>
-            </div>
-
-            {error && <div className="err">{error}</div>}
-
-            <button className="btn" disabled={submitting}>{submitting ? 'Saving…' : 'Submit Vote'}</button>
-
-            <div className="links">
-              <a href="/weekly">See weekly results →</a>
-            </div>
-
-            <div className="admin">
-              <button type="button" className="mini danger" onClick={clearVotes}>Clear this week’s votes</button>
-              <button type="button" className="mini" onClick={undoClear}>Undo last clear</button>
-            </div>
-          </form>
         </div>
-      </div>
+      </Shell>
 
       <style jsx>{`
-        .wrap {
-          min-height: 100vh;
-          display: grid; place-items: center;
-          background: linear-gradient(180deg, #0b1b2a, #0b1b2a);
-          padding: 32px 16px;
-        }
+        .wrap { display:grid; place-items:center; min-height: calc(100vh - 80px); }
         .card {
-          width: 100%; max-width: 780px;
-          background: #0f2236; color: #eaf6ff;
-          border: 1px solid #14314a; border-radius: 16px;
-          box-shadow: 0 10px 50px rgba(0,0,0,.4); padding: 28px;
+          width: 100%; max-width: 840px; background: #0e2233; color: #eaf6ff;
+          border: 1px solid #16354a; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
+          padding: 28px; position: relative; z-index: 2;
         }
-        .header{display:flex;align-items:center;gap:10px}
-        .dot{width:10px;height:10px;border-radius:50%;background:#ffe66d;box-shadow:0 0 8px #ffe66d}
-        h1{margin:0;font-size:26px}
-        .sub{margin-left:auto;opacity:.8}
-        .copy{opacity:.9;margin:12px 0 18px}
-        label{display:block;margin-bottom:14px;font-weight:600}
-        .row{display:grid;gap:12px;grid-template-columns:2fr 1fr 1fr}
-        input,select{width:100%;margin-top:6px;padding:10px 12px;border-radius:10px;border:1px solid #244b6b;background:#0b1b2a;color:#eaf6ff;outline:none}
-        input::placeholder{color:#7aa0bc}
-        .btn{margin-top:6px;width:100%;padding:12px 16px;background:linear-gradient(135deg,#33cc66,#00b3ff);border:none;border-radius:10px;color:#03121d;font-weight:800;letter-spacing:.3px;cursor:pointer}
-        .links{margin-top:10px;text-align:center}
-        .links a{color:#7fd6ff;text-decoration:none}
-        .req{color:#ff8b8b}
-        .err{background:#441818;border:1px solid #8b2e2e;color:#ffc1c1;border-radius:10px;padding:10px 12px;margin:8px 0 12px}
-        .admin{display:flex;gap:10px;justify-content:center;margin-top:8px}
-        .mini{padding:8px 12px;border-radius:8px;border:1px solid #244b6b;background:#0b1b2a;color:#eaf6ff;cursor:pointer}
-        .danger{border-color:#5c2a2a}
+        .hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+        .brand { font-weight:800; font-size:22px; margin-left:6px; }
+        .dot { width:10px; height:10px; border-radius:50%; display:inline-block; background:#f0ff53; box-shadow:0 0 10px #f0ff53; }
+        .muted { opacity:.75; font-size:14px; }
+        .wx { display:flex; gap:8px; margin:8px 0 14px; flex-wrap:wrap; }
+        .chip { background:#103046; border:1px solid #174a67; border-radius:999px; padding:6px 10px; font-size:13px; }
+        .copy { margin:8px 0 16px; opacity:.9; }
+        .form label { display:block; margin-bottom:14px; font-weight:600; }
+        .row { display:grid; gap:12px; grid-template-columns: 2fr 1fr 1fr; }
+        input, select {
+          width:100%; margin-top:6px; padding:10px 12px; border-radius:10px;
+          border:1px solid #244b6b; background:#071621; color:#eaf6ff; outline:none;
+        }
+        .btn {
+          margin-top:6px; width:100%; padding:12px 16px;
+          background: linear-gradient(135deg, #33cc66, #00b3ff);
+          border:none; border-radius:10px; color:#03121d; font-weight:800; letter-spacing:.3px; cursor:pointer;
+        }
+        .err { background:#441818; border:1px solid #8b2e2e; color:#ffc1c1; border-radius:10px; padding:10px 12px; margin:8px 0 12px; }
+        .link { margin-top:10px; text-align:center; }
+        .link a { color:#7fd6ff; text-decoration:none; }
+        .admin { margin-top:14px; display:flex; gap:10px; justify-content:center; }
+        .small { padding:8px 10px; border-radius:8px; border:1px solid #2a5978; background:#0b1f2e; color:#d9f2ff; cursor:pointer; }
+        .danger { border-color:#7a2a2a; background:#2b1212; }
+        .req { color:#ff8b8b; }
       `}</style>
     </>
   );
