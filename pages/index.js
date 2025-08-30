@@ -2,16 +2,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import Shell from '../components/Shell';
+import GamePanel from '../components/GamePanel';
 
 const DAYS = ['Saturday', 'Sunday'];
 const HOURS = Array.from({ length: 25 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
-
-function hhmmToLabel(s) {
-  const [H, M] = s.split(':').map(Number);
-  const ampm = H >= 12 ? 'PM' : 'AM';
-  const h12 = ((H + 11) % 12) + 1;
-  return `${h12}:${M.toString().padStart(2, '0')} ${ampm}`;
-}
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -25,48 +19,48 @@ export default function Home() {
 
   const audioRef = useRef(null);
 
+  // ensure "to" > "from"
   const toOptions = useMemo(() => {
     const fromIdx = HOURS.indexOf(from);
     return HOURS.slice(fromIdx + 1);
   }, [from]);
 
   useEffect(() => {
-    // keep "to" > "from"
     if (HOURS.indexOf(to) <= HOURS.indexOf(from)) {
       const next = HOURS[HOURS.indexOf(from) + 1] || '24:00';
       setTo(next);
     }
-  }, [from]); // eslint-disable-line
+  }, [from, to]);
 
-  // Weather (Open-Meteo, Bentonville AR ~ Walmart Home Office)
+  // Save name to localStorage so the mini-game picks it up automatically
+  useEffect(() => {
+    if (typeof window !== 'undefined') localStorage.setItem('pp_name', name);
+  }, [name]);
+
+  // Weather (Open-Meteo, Bentonville AR)
   useEffect(() => {
     (async () => {
       try {
-        // Bentonville, AR
         const lat = 36.3729, lon = -94.2088;
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto`;
-        const r = await fetch(url);
+        const r = await fetch(url, { cache: 'no-store' });
         const j = await r.json();
-        // find next Sat & Sun in returned daily time[] (ISO dates)
-        const times = j?.daily?.time || [];
+        const t = j?.daily?.time || [];
         const max = j?.daily?.temperature_2m_max || [];
         const min = j?.daily?.temperature_2m_min || [];
         const pop = j?.daily?.precipitation_probability_max || [];
-        const toObj = (k) => ({
-          date: times[k],
-          tmax: max[k],
-          tmin: min[k],
-          pop: pop[k]
-        });
+        const toObj = (k) => ({ date: t[k], tmax: max[k], tmin: min[k], pop: pop[k] });
 
         let sat = null, sun = null;
-        for (let i = 0; i < times.length; i++) {
-          const d = new Date(times[i]).getDay();
-          if (d === 6 && !sat) sat = toObj(i); // Saturday
-          if (d === 0 && !sun) sun = toObj(i); // Sunday
+        for (let i = 0; i < t.length; i++) {
+          const d = new Date(t[i]).getDay();
+          if (d === 6 && !sat) sat = toObj(i);
+          if (d === 0 && !sun) sun = toObj(i);
         }
         setWx({ sat, sun });
-      } catch {}
+      } catch {
+        // ignore API errors
+      }
     })();
   }, []);
 
@@ -102,6 +96,7 @@ export default function Home() {
       // subtle click
       audioRef.current?.play?.();
 
+      // go to results
       window.location.href = '/weekly';
     } catch (err) {
       setError(err.message || 'Something went wrong.');
@@ -118,8 +113,8 @@ export default function Home() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin })
     })
-      .then((r) => r.json())
-      .then((j) => {
+      .then(r => r.json())
+      .then(j => {
         if (!j.ok) alert(j.error || 'Failed');
         else alert('Done!');
       })
@@ -129,10 +124,11 @@ export default function Home() {
   return (
     <>
       <Head><title>PicklePal — Vote to Play</title></Head>
+      {/* short subtle click sound */}
       <audio ref={audioRef} preload="auto">
-        {/* short, light click */}
         <source src="data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQAA" type="audio/mp3" />
       </audio>
+
       <Shell>
         <div className="wrap">
           <div className="card">
@@ -166,32 +162,42 @@ export default function Home() {
             <form onSubmit={submitVote} className="form">
               <label>
                 Name <span className="req">*</span>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name" required />
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name"
+                  required
+                />
               </label>
 
               <label>
                 Email (optional)
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                />
               </label>
 
               <div className="row">
                 <label>
                   Day
-                  <select value={day} onChange={e => setDay(e.target.value)}>
+                  <select value={day} onChange={(e) => setDay(e.target.value)}>
                     {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </label>
 
                 <label>
                   From
-                  <select value={from} onChange={e => setFrom(e.target.value)}>
+                  <select value={from} onChange={(e) => setFrom(e.target.value)}>
                     {HOURS.slice(0, -1).map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </label>
 
                 <label>
                   To
-                  <select value={to} onChange={e => setTo(e.target.value)}>
+                  <select value={to} onChange={(e) => setTo(e.target.value)}>
                     {toOptions.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </label>
@@ -199,7 +205,9 @@ export default function Home() {
 
               {error && <div className="err">{error}</div>}
 
-              <button className="btn" disabled={submitting}>{submitting ? 'Saving…' : 'Submit Vote'}</button>
+              <button className="btn" disabled={submitting}>
+                {submitting ? 'Saving…' : 'Submit Vote'}
+              </button>
 
               <div className="link"><a href="/weekly">See weekly results →</a></div>
 
@@ -208,14 +216,17 @@ export default function Home() {
                 <button type="button" className="small" onClick={() => askPinThen('/api/undo')}>Undo last clear</button>
               </div>
             </form>
+
+            {/* >>> Mini-game + Leaderboard panel <<< */}
+            <GamePanel />
           </div>
         </div>
       </Shell>
 
       <style jsx>{`
-        .wrap { display:grid; place-items:center; min-height: calc(100vh - 80px); }
+        .wrap { display:grid; place-items:center; min-height: calc(100vh - 80px); background:#08131e; padding: 40px 16px; }
         .card {
-          width: 100%; max-width: 840px; background: #0e2233; color: #eaf6ff;
+          width: 100%; max-width: 900px; background: #0e2233; color: #eaf6ff;
           border: 1px solid #16354a; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
           padding: 28px; position: relative; z-index: 2;
         }
