@@ -1,4 +1,4 @@
-/* ---------- Utility palette & tiny utility classes (unchanged) ---------- */
+/* ---------- Utility palette & tiny utility classes ---------- */
 :root{--slate-50:#f8fafc;--slate-900:#0f172a;--blue-600:#2563eb;--emerald-600:#059669;}
 *{box-sizing:border-box}
 html,body{padding:0;margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Arial}
@@ -40,8 +40,8 @@ body {
 }
 a { color: #0f766e; }
 
-/* ---------- Mobile centering & scroll fixes (NEW & SIMPLE) ---------- */
-/* Kill any hidden gutter & horizontal scroll in in-app browsers */
+/* ---------- Rock-solid mobile centering & scroll fixes ---------- */
+/* Ensure nothing makes the page wider than the viewport */
 html, body, #__next {
   width: 100% !important;
   max-width: 100% !important;
@@ -50,29 +50,23 @@ html, body, #__next {
   overflow-x: hidden !important;
 }
 
-/* The page wrappers span the full viewport and center children */
-:root{
-  --page-pad-l: max(16px, env(safe-area-inset-left));
-  --page-pad-r: max(16px, env(safe-area-inset-right));
-}
-
+/* Full-viewport wrapper that centers content horizontally */
 .pp-wrap,
 .results-wrap {
-  min-height: 100vh;
-  width: 100%;
-  display: flex !important;
-  align-items: flex-start;
-  justify-content: center !important;
-  padding-left: var(--page-pad-l);
-  padding-right: var(--page-pad-r);
+  min-height: 100dvh;               /* dynamic viewport height */
+  width: 100dvw;                     /* dynamic viewport width */
+  display: grid !important;
+  grid-template-columns: 1fr;
+  justify-items: center !important;  /* horizontal centering */
+  align-items: start;                /* content starts near top */
+  padding: 16px;                     /* comfy side padding */
 }
 
-/* The cards center themselves with auto margins (no calc/vw math) */
+/* The cards keep within viewport (no calc/safe-area tricks) */
 .pp-card,
 .results-card,
 .weekly-card {
-  width: 100%;
-  max-width: 760px;
+  width: min(760px, 100dvw - 32px);  /* 16px padding each side */
   margin: 0 auto !important;
   position: relative !important;
   left: auto !important;
@@ -80,7 +74,7 @@ html, body, #__next {
   transform: none !important;
 }
 
-/* Decorations shouldn’t affect layout or scrolling */
+/* Decorations are fixed and don’t affect layout width */
 .bg-ball, .bg-paddle {
   position: fixed;
   width: 44px;
@@ -100,10 +94,10 @@ html, body, #__next {
   height: 300px;
   background: #061724;
   border-radius: 12px;
-  touch-action: none;
+  touch-action: none;               /* no page scroll while touching */
 }
 
-/* Small phones: keep comfortable side padding but center content */
+/* Small phones keep centered width nicely */
 @media (max-width: 640px) {
   .pp-card, .results-card, .weekly-card {
     width: min(94vw, 760px);
